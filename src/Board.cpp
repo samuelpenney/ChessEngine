@@ -41,7 +41,18 @@ class Board {
         char pieceCharAt(int square) const {
             if (getBit(whitePawns, square)) return 'P';
             if (getBit(whiteKnights, square)) return 'N';
-            
+            if (getBit(whiteRooks, square)) return 'R';
+            if (getBit(whiteBishops, square)) return 'B';
+            if (getBit(whiteQueens, square)) return 'Q';
+            if (getBit(whiteKing, square)) return 'K';
+            if (getBit(blackPawns, square)) return 'p';
+            if (getBit(blackKnights, square)) return 'n';
+            if (getBit(blackRooks, square)) return 'r';
+            if (getBit(blackBishops, square)) return 'b';
+            if (getBit(blackQueens, square)) return 'q';
+            if (getBit(blackKing, square)) return 'k';
+
+            return '.';
         }
 
 };
