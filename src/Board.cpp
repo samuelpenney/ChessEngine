@@ -73,9 +73,3 @@ class Board {
         }
 
 };
-
-int main() {
-    Board ChessBoard;
-    ChessBoard.initPieces();
-    ChessBoard.printBoard();
-}
