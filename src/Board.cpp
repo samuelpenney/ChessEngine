@@ -24,6 +24,14 @@ class Board {
             return (bb >> square) &1ULL;
         }
 
+        static void setBit(Bitboard &bb, int square) {
+            bb |= 1ULL << square;
+        }
+
+        static void clearBit(Bitboard &bb, int square) {
+            bb &= ~(1ULL << square);
+        }
+
         void printBoard() const {
             std::cout << "\n    a b c d e f g h\n";
             std::cout << "    ---------------\n";
@@ -39,7 +47,7 @@ class Board {
         }
 
         void initPieces() {
-            whitePawns = 0x000000000000FF00ULL;
+            whitePawns = 0x000000000000FF00ULL; // Creating starting position of the pieces
             whiteKnights = 0x0000000000000042ULL;
             whiteRooks = 0x0000000000000081ULL;
             whiteBishops = 0x0000000000000024ULL;
@@ -53,10 +61,32 @@ class Board {
             blackQueens = 0x0800000000000000ULL;
             blackKing = 0x1000000000000000ULL;
         }
-    
-    private:
+
+        void movePiece(int frSq, int toSq) {
+            char piece = pieceCharAt(frSq);
+            if (piece == '.') {
+                std::cerr << "No piece on from square " << frSq << std::endl;
+                return;
+            }
+
+            clearSquare(toSq);
+            switch (piece) {
+                case 'P': moveOnBitBoard(whitePawns, frSq, toSq); break;
+                case 'N': moveOnBitBoard(whiteKnights, frSq, toSq); break;
+                case 'R': moveOnBitBoard(whiteRooks, frSq, toSq); break;
+                case 'B': moveOnBitBoard(whiteBishops, frSq, toSq); break;
+                case 'Q': moveOnBitBoard(whiteQueens, frSq, toSq); break;
+                case 'K': moveOnBitBoard(whiteKing, frSq, toSq); break;
+                case 'p': moveOnBitBoard(blackPawns, frSq, toSq); break;
+                case 'n': moveOnBitBoard(blackKnights, frSq, toSq); break;
+                case 'r': moveOnBitBoard(blackRooks, frSq, toSq); break;
+                case 'b': moveOnBitBoard(blackBishops, frSq, toSq); break;
+                case 'q': moveOnBitBoard(blackQueens, frSq, toSq); break;
+                case 'k': moveOnBitBoard(blackKing, frSq, toSq); break;
+            }
+        }
         char pieceCharAt(int square) const {
-            if (getBit(whitePawns, square)) return 'P';
+            if (getBit(whitePawns, square)) return 'P'; // Printing pieces from bitboard
             if (getBit(whiteKnights, square)) return 'N';
             if (getBit(whiteRooks, square)) return 'R';
             if (getBit(whiteBishops, square)) return 'B';
@@ -70,6 +100,27 @@ class Board {
             if (getBit(blackKing, square)) return 'k';
 
             return '.';
+        }
+    
+    private:
+        static void moveOnBitBoard(Bitboard &bb, int frSq, int toSq) {
+            clearBit(bb, frSq);
+            setBit(bb, toSq);
+        }
+
+        void clearSquare(int square){
+            clearBit(whitePawns, square);
+            clearBit(whiteKnights, square);
+            clearBit(whiteRooks, square);
+            clearBit(whiteBishops, square);
+            clearBit(whiteQueens, square);
+            clearBit(whiteKing, square);
+            clearBit(blackPawns, square);
+            clearBit(blackKnights, square);
+            clearBit(blackRooks, square);
+            clearBit(blackBishops, square);
+            clearBit(blackQueens, square);
+            clearBit(blackKing, square);
         }
 
 };
