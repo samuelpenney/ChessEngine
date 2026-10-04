@@ -19,6 +19,13 @@ class Board {
     Bitboard blackKing = 0;
     Bitboard blackQueens = 0;
 
+    bool whiteCastleK = false; // Castling rights, and which side. (TODO: IMPLEMENT LOGIC)
+    bool whiteCastleQ = false;
+    bool blackCastleK = false;
+    bool blackCastleQ = false;
+
+    int epSq = -1; // The square a pawn skipped over on the last move. For en passants (TODO: IMPLEMENT LOGIC)
+
     public:
         static bool getBit(Bitboard bb, int square) {
             return (bb >> square) &1ULL;
@@ -60,6 +67,9 @@ class Board {
             blackBishops = 0x2400000000000000ULL;
             blackQueens = 0x0800000000000000ULL;
             blackKing = 0x1000000000000000ULL;
+
+            whiteCastleK = whiteCastleQ = blackCastleK = blackCastleQ = true; // Setting rights to true
+            epSq = -1;
         }
 
         void movePiece(int frSq, int toSq) {
@@ -70,20 +80,8 @@ class Board {
             }
 
             clearSquare(toSq);
-            switch (piece) {
-                case 'P': moveOnBitBoard(whitePawns, frSq, toSq); break;
-                case 'N': moveOnBitBoard(whiteKnights, frSq, toSq); break;
-                case 'R': moveOnBitBoard(whiteRooks, frSq, toSq); break;
-                case 'B': moveOnBitBoard(whiteBishops, frSq, toSq); break;
-                case 'Q': moveOnBitBoard(whiteQueens, frSq, toSq); break;
-                case 'K': moveOnBitBoard(whiteKing, frSq, toSq); break;
-                case 'p': moveOnBitBoard(blackPawns, frSq, toSq); break;
-                case 'n': moveOnBitBoard(blackKnights, frSq, toSq); break;
-                case 'r': moveOnBitBoard(blackRooks, frSq, toSq); break;
-                case 'b': moveOnBitBoard(blackBishops, frSq, toSq); break;
-                case 'q': moveOnBitBoard(blackQueens, frSq, toSq); break;
-                case 'k': moveOnBitBoard(blackKing, frSq, toSq); break;
-            }
+            Bitboard &bb = bitboardFor(piece);
+            moveOnBitBoard(bb, frSq, toSq); // Removed future repetative code to a funciton
         }
         char pieceCharAt(int square) const {
             if (getBit(whitePawns, square)) return 'P'; // Printing pieces from bitboard
@@ -121,6 +119,24 @@ class Board {
             clearBit(blackBishops, square);
             clearBit(blackQueens, square);
             clearBit(blackKing, square);
+        }
+
+        Bitboard &bitboardFor(char piece) {
+            switch (piece) {
+                case 'P': return whitePawns;
+                case 'N': return whiteKnights;
+                case 'R': return whiteRooks;
+                case 'B': return whiteBishops;
+                case 'Q': return whiteQueens;
+                case 'K': return whiteKing;
+                case 'p': return blackPawns;
+                case 'n': return blackKnights;
+                case 'r': return blackRooks;
+                case 'b': return blackBishops;
+                case 'q': return blackQueens;
+                case 'k': return blackKing;
+                default: return blackKing;
+            }
         }
 
 };
