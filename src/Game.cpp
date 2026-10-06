@@ -2,6 +2,8 @@
 #include <cstdint>
 #include <array>
 #include <string>
+#include <vector>
+#include <cctype>
 #include <algorithm>
 #include "Board.cpp"
 #define GAME_CPP
@@ -18,23 +20,17 @@ class Game {
             while (!gameOver) {
                 chessBoard.printBoard();
 
-                if (whiteTurn) {
-                    do {
-                        std::cout << "White Move: " << std::endl;
-                        std::string input;
-                        std::getline(std::cin, input);
-                        if (moveFromInput(input, chessBoard)) break;
-                        std::cerr << "Try again: " << input << std::endl;
-                    } while (true);
-                } else {
-                    do {
-                        std::cout << "Black Move: " << std::endl;
-                        std::string input;
-                        std::getline(std::cin, input);
-                        if (moveFromInput(input, chessBoard)) break;
-                        std::cerr << "Try again : " << input << std::endl;
-                    } while (true);
-                }
+                const char *name = whiteTurn ? "White" : "Black"; // Doing this to remove repetative code
+                do {
+                    std::cout << name << " Move: " << std::endl;
+                    std::string input;
+                    if (!std::getline(std::cin, input) || input =="quit") {
+                        std::cout << "Game ended." << std::endl;
+                        return;
+                    }
+                    if (moveFromInput(input, chessBoard)) break;
+                    std::cerr << "Try again: " << input << std::endl;
+                } while (true);
 
                 // gameOver = __checkGameOver__(chessBoard);
                 gameOver = false; // For now, so this doesn't run into an infinite loop
