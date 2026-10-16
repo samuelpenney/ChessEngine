@@ -83,6 +83,7 @@ class Board {
             Bitboard &bb = bitboardFor(piece);
             moveOnBitBoard(bb, frSq, toSq); // Removed future repetative code to a funciton
         }
+
         char pieceCharAt(int square) const {
             if (getBit(whitePawns, square)) return 'P'; // Printing pieces from bitboard
             if (getBit(whiteKnights, square)) return 'N';
@@ -99,8 +100,77 @@ class Board {
 
             return '.';
         }
+
+        // RULES
+
+        bool isSquareAttacked(int sq, bool byWhite) const {
+            const int f = sq & 7, r = sq >> 3;
+            const char P = byWhite ? 'P' : 'p';
+            const char N = byWhite ? 'N' : 'n';
+            const char B = byWhite ? 'B' : 'b';
+            const char R = byWhite ? 'R' : 'r';
+            const char Q = byWhite ? 'Q' : 'q';
+            const char K = byWhite ? 'K' : 'k';
+
+            //Pawns
+
+            int pr = byWhite ? r-1 : r + 1;
+            for (int df = -1; df <= 1; df += 2) {
+                int pf = f + df;
+                if (inBounds(pf, pr) && pieceCharAt(pr * 8 + pf) == P) return true;
+            }
+
+            // Knights
+            static const int kn[8][2] = {{1,2},{2,1},{2,-1},{1,-2},{-1,-2},{-2,-1},{-2,1},{-1,2}};
+            for (auto &d : kn) {
+                int nf = f + d[0], nr = r + d[1];
+                if (inBounds(nf,nr) && pieceCharAt(nr * 8 + nf) == N) return true;
+            }
+
+            //King
+
+            for (int df = -1; df <= 1; ++df) {
+                for (int dr = -1; dr<= 1; ++dr) {
+                    if (df == 0 && dr == 0) continue;
+                    int nf = f + df, nr = r + dr;
+                    if (inBounds(nf, nr) && pieceCharAt(nr * 8 + nf) == K) return true; 
+                }
+            }
+
+            // rook/queen straights & bishop/queen diagonals
+            static const int straight[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
+            static const int diagonal[4][2] = {{1,1},{1,-1},{-1,1},{-1,-1}};
+            for (auto &d : straight) {
+                int nf = f + d[0], nr = r + d[1];
+                while (inBounds(nf,nr)) {
+                    char c = pieceCharAt(nr * 8 + nf);
+                    if (c != '.') {
+                        if (c == R || c == Q) return true; break;
+                    }
+                    nf += d[0];
+                    nr += d[1];
+                }
+            }
+            for (auto &d : diagonal) {
+                int nf = f + d[0], nr = r + d[1];
+                while (inBounds(nf, nr)) {
+                    char c = pieceCharAt(nr * 8 + nf);
+                    if (c != '.') {
+                        if (c == B || c == Q) return true; break;
+                    }
+                    nf += d[0];
+                    nr += d[1];
+                }
+            }
+            return false;
+        }
     
     private:
+
+        static bool inBounds(int f, int r) {
+            return f >= 0 && f < 8 && r >= 0 && r < 8;
+        }
+
         static void moveOnBitBoard(Bitboard &bb, int frSq, int toSq) {
             clearBit(bb, frSq);
             setBit(bb, toSq);
