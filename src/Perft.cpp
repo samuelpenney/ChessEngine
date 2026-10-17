@@ -1,5 +1,4 @@
-// Perft: counts the positions reachable at a given depth and compares them with
-// published results, to catch move generation bugs. https://www.chessprogramming.org/Perft_Results
+// Perft: counts the positions reachable at a given depth and compares them with https://www.chessprogramming.org/Perft_Results
 #include "Board.h"
 #include <chrono>
 #include <cstdio>
@@ -26,18 +25,51 @@ const PerftTest TESTS[] = {
     {"pos6", "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", 4, 3894594, 164075551},
 };
 
-long perft(Board &board, bool white, int depth) {
+long perft(Board &board, int depth) {
     if (depth == 0) return 1;
-    const MoveList moves = board.legalMoves(white);
+    const MoveList moves = board.legalMoves();
     if (depth == 1) return moves.size();
 
     long nodes = 0;
     for (Move m : moves) {
         Undo undo = board.makeMove(m);
-        nodes += perft(board, !white, depth - 1);
+        nodes += perft(board, depth - 1);
         board.unmakeMove(m, undo);
     }
     return nodes;
+}
+
+// Same walk without the depth 1 shortcut, checking the incremental hash at every node
+// and that unmakeMove puts it back. Returns the number of mismatches.
+long checkHashes(Board &board, int depth) {
+    long bad = board.hash() != board.computeHash();
+    if (depth == 0) return bad;
+
+    const uint64_t before = board.hash();
+    for (Move m : board.legalMoves()) {
+        Undo undo = board.makeMove(m);
+        bad += checkHashes(board, depth - 1);
+        board.unmakeMove(m, undo);
+        bad += board.hash() != before;
+    }
+    return bad;
+}
+
+int runHashCheck() {
+    long bad = 0;
+    for (const PerftTest &t : TESTS) {
+        Board board;
+        if (!board.loadFen(t.fen)) {
+            std::printf("%-12s bad FEN\n", t.name);
+            ++bad;
+            continue;
+        }
+        const long n = checkHashes(board, t.depth - 1);
+        std::printf("%-12s depth %d  %s\n", t.name, t.depth - 1, n ? "FAIL" : "ok");
+        bad += n;
+    }
+    std::printf("\n%s\n", bad ? "Hash mismatches found" : "All hashes match");
+    return bad ? 1 : 0;
 }
 
 std::string squareName(int sq) {
@@ -61,8 +93,7 @@ int runSuite(bool deep) {
     double totalSecs = 0;
     for (const PerftTest &t : TESTS) {
         Board board;
-        bool white;
-        if (!board.loadFen(t.fen, white)) {
+        if (!board.loadFen(t.fen)) {
             std::printf("%-12s bad FEN\n", t.name);
             ++failures;
             continue;
@@ -71,7 +102,7 @@ int runSuite(bool deep) {
         const long expected = deep ? t.expectedDeep : t.expected;
 
         auto start = std::chrono::steady_clock::now();
-        long nodes = perft(board, white, depth);
+        long nodes = perft(board, depth);
         double secs = secondsSince(start);
         totalNodes += nodes;
         totalSecs += secs;
@@ -89,8 +120,7 @@ int runSuite(bool deep) {
 // Per-move counts at the root, for comparing against another engine to find a bug
 int runPosition(const std::string &fen, int depth, bool divide) {
     Board board;
-    bool white;
-    if (!board.loadFen(fen, white)) {
+    if (!board.loadFen(fen)) {
         std::fprintf(stderr, "Invalid FEN: %s\n", fen.c_str());
         return 1;
     }
@@ -98,16 +128,16 @@ int runPosition(const std::string &fen, int depth, bool divide) {
     auto start = std::chrono::steady_clock::now();
     long nodes = 0;
     if (divide && depth > 0) {
-        for (Move m : board.legalMoves(white)) {
+        for (Move m : board.legalMoves()) {
             Undo undo = board.makeMove(m);
-            long n = perft(board, !white, depth - 1);
+            long n = perft(board, depth - 1);
             board.unmakeMove(m, undo);
             std::printf("%s: %ld\n", moveName(m).c_str(), n);
             nodes += n;
         }
         std::printf("\n");
     } else {
-        nodes = perft(board, white, depth);
+        nodes = perft(board, depth);
     }
     std::printf("Nodes: %ld (%.2fs)\n", nodes, secondsSince(start));
     return 0;
@@ -118,8 +148,9 @@ void usage(const char *prog) {
                  "Usage:\n"
                  "  %s                          run the standard suite\n"
                  "  %s --deep                   run the suite one ply deeper (slower)\n"
+                 "  %s --hash                   check the incremental position hash on the suite\n"
                  "  %s \"<fen>\" <depth> [--divide]  count one position, optionally per root move\n",
-                 prog, prog, prog);
+                 prog, prog, prog, prog);
 }
 
 }
@@ -127,6 +158,7 @@ void usage(const char *prog) {
 int main(int argc, char **argv) {
     if (argc == 1) return runSuite(false);
     if (argc == 2 && std::string(argv[1]) == "--deep") return runSuite(true);
+    if (argc == 2 && std::string(argv[1]) == "--hash") return runHashCheck();
     if (argc == 3 || (argc == 4 && std::string(argv[3]) == "--divide")) {
         char *end;
         long depth = std::strtol(argv[2], &end, 10);

@@ -66,6 +66,36 @@ constexpr CastlingMasks buildCastlingMasks() {
 
 constexpr CastlingMasks castlingMasks = buildCastlingMasks();
 
+// Random numbers XORed together to hash a position: one per piece on each square,
+// one per set of castling rights, one per en passant file, and one for black to move
+struct ZobristKeys {
+    uint64_t piece[12][64];
+    uint64_t castling[16];
+    uint64_t epFile[8];
+    uint64_t blackToMove;
+};
+
+constexpr ZobristKeys buildZobristKeys() {
+    ZobristKeys z{};
+    // splitmix64, so the keys are the same on every run
+    uint64_t state = 0;
+    auto next = [&state]() {
+        uint64_t x = (state += 0x9E3779B97F4A7C15ULL);
+        x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
+        x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
+        return x ^ (x >> 31);
+    };
+    for (auto &squares : z.piece) {
+        for (uint64_t &key : squares) key = next();
+    }
+    for (uint64_t &key : z.castling) key = next();
+    for (uint64_t &key : z.epFile) key = next();
+    z.blackToMove = next();
+    return z;
+}
+
+constexpr ZobristKeys zobristKeys = buildZobristKeys();
+
 // Ray up to and including the first blocker
 Bitboard rayAttacks(int sq, int dir, Bitboard occ) {
     Bitboard attacks = tables.ray[dir][sq];
@@ -135,14 +165,20 @@ void Board::initPieces() {
 
     castling = WhiteKingSide | WhiteQueenSide | BlackKingSide | BlackQueenSide;
     epSq = -1;
+    whiteTurn = true;
+    halfmoveClock = 0;
+    history.clear();
     syncFromBitboards();
+    zobrist = computeHash();
 }
 
-bool Board::loadFen(const std::string &fen, bool &whiteToMove) {
+bool Board::loadFen(const std::string &fen) {
     std::istringstream in(fen);
     std::string placement, side, rights = "-", ep = "-";
+    int halfmove = 0;
     if (!(in >> placement >> side)) return false;
-    in >> rights >> ep;  // optional, as are the move counters, which aren't tracked
+    in >> rights >> ep >> halfmove;  // optional; the fullmove number isn't tracked
+    if (halfmove < 0) return false;
 
     Board b;
     int rank = 7, file = 0;
@@ -185,15 +221,19 @@ bool Board::loadFen(const std::string &fen, bool &whiteToMove) {
     if (ep != "-") {
         if (ep.size() != 2 || ep[0] < 'a' || ep[0] > 'h' || ep[1] != (white ? '6' : '3')) return false;
         const int sq = (ep[1] - '1') * 8 + (ep[0] - 'a');
-        // Some FENs list the square after every double step; only keep it if the pushed pawn is really there
+        // Some FENs list the square after every double step; only keep it if the pushed pawn is
+        // really there and a pawn can take it, the same as makeMove does
         const int pawnSq = white ? sq - 8 : sq + 8;
-        if (b.mailbox[sq] == Piece::None && b.mailbox[pawnSq] == makePiece(PieceType::Pawn, !white)) {
+        if (b.mailbox[sq] == Piece::None && b.mailbox[pawnSq] == makePiece(PieceType::Pawn, !white) &&
+            (tables.pawn[white ? 1 : 0][sq] & b.bitboardFor(makePiece(PieceType::Pawn, white)))) {
             b.epSq = sq;
         }
     }
 
+    b.whiteTurn = white;
+    b.halfmoveClock = halfmove;
+    b.zobrist = b.computeHash();
     *this = b;
-    whiteToMove = white;
     return true;
 }
 
@@ -201,17 +241,27 @@ Piece Board::pieceAt(int square) const {
     return mailbox[square];
 }
 
-bool Board::isSquareAttacked(int sq, bool byWhite) const {
-    const Bitboard queens = bitboardFor(makePiece(PieceType::Queen, byWhite));
-    const Bitboard rooks = bitboardFor(makePiece(PieceType::Rook, byWhite)) | queens;
-    const Bitboard bishops = bitboardFor(makePiece(PieceType::Bishop, byWhite)) | queens;
+bool Board::isWhiteTurn() const {
+    return whiteTurn;
+}
 
-    // A pawn of the other colour on sq attacks exactly the squares an attacking pawn could stand on
-    return (tables.pawn[byWhite ? 1 : 0][sq] & bitboardFor(makePiece(PieceType::Pawn, byWhite))) ||
-           (tables.knight[sq] & bitboardFor(makePiece(PieceType::Knight, byWhite))) ||
-           (tables.king[sq] & bitboardFor(makePiece(PieceType::King, byWhite))) ||
-           (rookAttacks(sq, allOcc) & rooks) ||
-           (bishopAttacks(sq, allOcc) & bishops);
+uint64_t Board::hash() const {
+    return zobrist;
+}
+
+uint64_t Board::computeHash() const {
+    uint64_t h = 0;
+    for (int i = 0; i < 12; ++i) {
+        for (Bitboard b = pieceBB[i]; b; b &= b - 1) h ^= zobristKeys.piece[i][__builtin_ctzll(b)];
+    }
+    h ^= zobristKeys.castling[castling];
+    if (epSq >= 0) h ^= zobristKeys.epFile[epSq & 7];
+    if (!whiteTurn) h ^= zobristKeys.blackToMove;
+    return h;
+}
+
+bool Board::isSquareAttacked(int sq, bool byWhite) const {
+    return isSquareAttacked(sq, byWhite, allOcc, 0);
 }
 
 bool Board::inCheck(bool white) const {
@@ -220,7 +270,12 @@ bool Board::inCheck(bool white) const {
     return isSquareAttacked(k, !white);
 }
 
-MoveList Board::pseudoLegalMoves(bool white) const {
+bool Board::inCheck() const {
+    return inCheck(whiteTurn);
+}
+
+MoveList Board::pseudoLegalMoves() const {
+    const bool white = whiteTurn;
     MoveList moves;
     const Bitboard own = white ? whiteOcc : blackOcc;
     const Bitboard enemy = white ? blackOcc : whiteOcc;
@@ -297,24 +352,24 @@ MoveList Board::pseudoLegalMoves(bool white) const {
     return moves;
 }
 
-MoveList Board::legalMoves(bool white) const {
+MoveList Board::legalMoves() const {
     MoveList legal;
-    collectLegalMoves(white, legal, false);
+    collectLegalMoves(legal, false);
     return legal;
 }
 
-bool Board::hasLegalMove(bool white) const {
+bool Board::hasLegalMove() const {
     MoveList legal;
-    collectLegalMoves(white, legal, true);
+    collectLegalMoves(legal, true);
     return !legal.empty();
 }
 
-bool Board::isCheckmate(bool white) const {
-    return inCheck(white) && !hasLegalMove(white);
+bool Board::isCheckmate() const {
+    return inCheck() && !hasLegalMove();
 }
 
-bool Board::isStalemate(bool white) const {
-    return !inCheck(white) && !hasLegalMove(white);
+bool Board::isStalemate() const {
+    return !inCheck() && !hasLegalMove();
 }
 
 bool Board::insufficientMaterial() const {
@@ -325,11 +380,28 @@ bool Board::insufficientMaterial() const {
                     bitboardFor(Piece::BlackKnight) | bitboardFor(Piece::BlackBishop)) <= 1;
 }
 
+bool Board::isFiftyMoveDraw() const {
+    return halfmoveClock >= 100;
+}
+
+int Board::repetitions() const {
+    // Only positions since the last capture or pawn move can come back, and only every other ply
+    // has the same side to move
+    const int n = static_cast<int>(history.size());
+    const int oldest = n > halfmoveClock ? n - halfmoveClock : 0;
+    int count = 0;
+    for (int i = n - 2; i >= oldest; i -= 2) {
+        if (history[i] == zobrist) ++count;
+    }
+    return count;
+}
+
 Undo Board::makeMove(Move m) {
-    const Undo undo{castling, static_cast<int8_t>(epSq)};
+    const Undo undo{castling, static_cast<int8_t>(epSq), static_cast<uint16_t>(halfmoveClock)};
+    history.push_back(zobrist);
     const int from = m.from(), to = m.to();
     const Piece piece = m.piece();
-    const bool white = isWhite(piece);
+    const bool white = whiteTurn;
 
     if (m.captured() != Piece::None) {
         // en passant takes the pawn beside the destination
@@ -353,17 +425,33 @@ Undo Board::makeMove(Move m) {
         }
     }
 
+    zobrist ^= zobristKeys.castling[castling];
     castling &= castlingMasks.keep[from] & castlingMasks.keep[to];
+    zobrist ^= zobristKeys.castling[castling];
 
     //en passant target is only available for one move after the double step btw
-    epSq = m.flag() == MoveFlag::DoublePush ? (from + to) / 2 : -1;
+    if (epSq >= 0) zobrist ^= zobristKeys.epFile[epSq & 7];
+    epSq = -1;
+    if (m.flag() == MoveFlag::DoublePush) {
+        // Only set when an enemy pawn could take, so otherwise identical positions hash the same
+        const int ep = (from + to) / 2;
+        if (tables.pawn[white ? 0 : 1][ep] & bitboardFor(makePiece(PieceType::Pawn, !white))) {
+            epSq = ep;
+            zobrist ^= zobristKeys.epFile[ep & 7];
+        }
+    }
+
+    halfmoveClock = pieceType(piece) == PieceType::Pawn || m.captured() != Piece::None ? 0 : halfmoveClock + 1;
+    whiteTurn = !whiteTurn;
+    zobrist ^= zobristKeys.blackToMove;
     return undo;
 }
 
 void Board::unmakeMove(Move m, const Undo &undo) {
     const int from = m.from(), to = m.to();
     const Piece piece = m.piece();
-    const bool white = isWhite(piece);
+    whiteTurn = !whiteTurn;
+    const bool white = whiteTurn;
 
     if (m.flag() == MoveFlag::Castle) {
         Piece rook = makePiece(PieceType::Rook, white);
@@ -387,27 +475,57 @@ void Board::unmakeMove(Move m, const Undo &undo) {
 
     castling = undo.castling;
     epSq = undo.epSq;
+    halfmoveClock = undo.halfmoveClock;
+    // The piece helpers changed the hash as they went, but the saved one is exact
+    zobrist = history.back();
+    history.pop_back();
 }
 
 // Private methods
 
-void Board::collectLegalMoves(bool white, MoveList &legal, bool stopAtFirst) const {
-    const MoveList pseudo = pseudoLegalMoves(white);
+void Board::collectLegalMoves(MoveList &legal, bool stopAtFirst) const {
+    const bool white = whiteTurn;
+    const MoveList pseudo = pseudoLegalMoves();
     const int k = kingSquare(white);
     const bool check = k >= 0 && isSquareAttacked(k, !white);
     const Bitboard pinned = k >= 0 ? pinnedPieces(white, k) : 0;
-    Board scratch = *this;
     for (Move m : pseudo) {
         // Out of check, only king moves, en passant and pinned pieces can expose the king
-        if (k >= 0 && (check || m.from() == k || m.flag() == MoveFlag::EnPassant || getBit(pinned, m.from()))) {
-            Undo undo = scratch.makeMove(m);
-            bool exposed = scratch.inCheck(white);
-            scratch.unmakeMove(m, undo);
-            if (exposed) continue;
+        if (k >= 0 && (check || m.from() == k || m.flag() == MoveFlag::EnPassant || getBit(pinned, m.from())) &&
+            leavesKingAttacked(m, k)) {
+            continue;
         }
         legal.push(m);
         if (stopAtFirst) return;
     }
+}
+
+// Works out from the occupancy alone whether m leaves the mover's king attacked, so the board
+// doesn't have to be copied to try the move. The castling rook isn't moved, but it can't
+// change whether the king's new square is attacked.
+bool Board::leavesKingAttacked(Move m, int kingSq) const {
+    const int from = m.from(), to = m.to();
+    Bitboard captured = 0;
+    if (m.captured() != Piece::None) {
+        captured = 1ULL << (m.flag() == MoveFlag::EnPassant ? (whiteTurn ? to - 8 : to + 8) : to);
+    }
+    const Bitboard occ = (allOcc & ~(1ULL << from) & ~captured) | (1ULL << to);
+    return isSquareAttacked(from == kingSq ? to : kingSq, !whiteTurn, occ, captured);
+}
+
+// Attack test against a hypothetical occupancy, with the pieces on ignore treated as gone
+bool Board::isSquareAttacked(int sq, bool byWhite, Bitboard occ, Bitboard ignore) const {
+    const Bitboard keep = ~ignore;
+    const Bitboard queens = bitboardFor(makePiece(PieceType::Queen, byWhite));
+    const Bitboard rooks = (bitboardFor(makePiece(PieceType::Rook, byWhite)) | queens) & keep;
+    const Bitboard bishops = (bitboardFor(makePiece(PieceType::Bishop, byWhite)) | queens) & keep;
+
+    // A pawn of the other colour on sq attacks exactly the squares an attacking pawn could stand on
+    return (tables.pawn[byWhite ? 1 : 0][sq] & bitboardFor(makePiece(PieceType::Pawn, byWhite)) & keep) ||
+           (tables.knight[sq] & bitboardFor(makePiece(PieceType::Knight, byWhite)) & keep) ||
+           (tables.king[sq] & bitboardFor(makePiece(PieceType::King, byWhite))) ||
+           (rookAttacks(sq, occ) & rooks) ||
+           (bishopAttacks(sq, occ) & bishops);
 }
 
 void Board::addMoves(MoveList &moves, int from, Piece piece, Bitboard targets) const {
@@ -452,6 +570,7 @@ void Board::movePiece(int from, int to, Piece piece) {
     allOcc ^= fromTo;
     mailbox[from] = Piece::None;
     mailbox[to] = piece;
+    zobrist ^= zobristKeys.piece[static_cast<int>(piece)][from] ^ zobristKeys.piece[static_cast<int>(piece)][to];
 }
 
 void Board::removePiece(int square, Piece piece) {
@@ -459,6 +578,7 @@ void Board::removePiece(int square, Piece piece) {
     clearBit(isWhite(piece) ? whiteOcc : blackOcc, square);
     clearBit(allOcc, square);
     mailbox[square] = Piece::None;
+    zobrist ^= zobristKeys.piece[static_cast<int>(piece)][square];
 }
 
 // Square must be empty
@@ -467,6 +587,7 @@ void Board::putPiece(int square, Piece piece) {
     setBit(isWhite(piece) ? whiteOcc : blackOcc, square);
     setBit(allOcc, square);
     mailbox[square] = piece;
+    zobrist ^= zobristKeys.piece[static_cast<int>(piece)][square];
 }
 
 // Rebuild mailbox and occupancy after the piece bitboards are set directly

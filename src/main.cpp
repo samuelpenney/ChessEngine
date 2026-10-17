@@ -61,7 +61,8 @@ const Button playAgainBtn{sf::FloatRect({(WIN_W - 150.f) / 2.f, BANNER_Y + 90.f}
 
 bool isGameOver(GameOverStatus s) {
     return s == GameOverStatus::Checkmate || s == GameOverStatus::Stalemate ||
-           s == GameOverStatus::InsufficientMaterial;
+           s == GameOverStatus::InsufficientMaterial || s == GameOverStatus::FiftyMoveRule ||
+           s == GameOverStatus::ThreefoldRepetition;
 }
 
 // Lets the game launch from the project root, bin/, or src/.
@@ -170,6 +171,8 @@ std::string statusMessage(const GuiState &s) {
         case GameOverStatus::Checkmate: return std::string("Checkmate! ") + other + " wins.";
         case GameOverStatus::Stalemate: return "Stalemate! It's a draw.";
         case GameOverStatus::InsufficientMaterial: return "Draw by insufficient material.";
+        case GameOverStatus::FiftyMoveRule: return "Draw by the fifty-move rule.";
+        case GameOverStatus::ThreefoldRepetition: return "Draw by threefold repetition.";
         case GameOverStatus::InCheck: return std::string(mover) + " to move - Check!";
         case GameOverStatus::Playing: break;
     }

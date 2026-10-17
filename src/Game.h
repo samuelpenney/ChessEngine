@@ -9,12 +9,13 @@ enum class GameOverStatus {
     InCheck,
     Checkmate,
     Stalemate,
-    InsufficientMaterial
+    InsufficientMaterial,
+    FiftyMoveRule,
+    ThreefoldRepetition
 };
 
 class Game {
     Board board;
-    bool whiteTurn = true;
     MoveList legal;  // legal moves for the side to move, refreshed after every move
 
 public:

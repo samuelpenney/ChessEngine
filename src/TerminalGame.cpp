@@ -99,6 +99,12 @@ int main() {
             case GameOverStatus::InsufficientMaterial:
                 std::cout << "\nDraw by insufficient material." << std::endl;
                 return 0;
+            case GameOverStatus::FiftyMoveRule:
+                std::cout << "\nDraw by the fifty-move rule." << std::endl;
+                return 0;
+            case GameOverStatus::ThreefoldRepetition:
+                std::cout << "\nDraw by threefold repetition." << std::endl;
+                return 0;
             case GameOverStatus::InCheck:
                 std::cout << "\nCheck! " << mover << " is in check." << std::endl;
                 break;

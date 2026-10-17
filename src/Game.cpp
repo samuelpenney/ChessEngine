@@ -2,8 +2,7 @@
 
 void Game::init() {
     board.initPieces();
-    whiteTurn = true;
-    legal = board.legalMoves(whiteTurn);
+    legal = board.legalMoves();
 }
 
 const Board &Game::getBoard() const {
@@ -11,7 +10,7 @@ const Board &Game::getBoard() const {
 }
 
 bool Game::isWhiteTurn() const {
-    return whiteTurn;
+    return board.isWhiteTurn();
 }
 
 const MoveList &Game::legalMoves() const {
@@ -19,12 +18,18 @@ const MoveList &Game::legalMoves() const {
 }
 
 GameOverStatus Game::checkGameOver() const {
-    const bool check = board.inCheck(whiteTurn);
+    const bool check = board.inCheck();
     if (legal.empty()) {
         return check ? GameOverStatus::Checkmate : GameOverStatus::Stalemate;
     }
     if (board.insufficientMaterial()) {
         return GameOverStatus::InsufficientMaterial;
+    }
+    if (board.repetitions() >= 2) {
+        return GameOverStatus::ThreefoldRepetition;
+    }
+    if (board.isFiftyMoveDraw()) {
+        return GameOverStatus::FiftyMoveRule;
     }
     if (check) {
         return GameOverStatus::InCheck;
@@ -39,6 +44,7 @@ bool Game::tryMove(int fromSq, int toSq, PieceType promo, std::string &errorMsg)
         return false;
     }
     bool pieceIsWhite = isWhite(piece);
+    const bool whiteTurn = board.isWhiteTurn();
     if (whiteTurn && !pieceIsWhite) {
         errorMsg = "Illegal move: it's White's turn, but that square has a black piece.";
         return false;
@@ -55,12 +61,11 @@ bool Game::tryMove(int fromSq, int toSq, PieceType promo, std::string &errorMsg)
             if (m.promo() != want) continue;
         }
         board.makeMove(m);
-        whiteTurn = !whiteTurn;
-        legal = board.legalMoves(whiteTurn);
+        legal = board.legalMoves();
         return true;
     }
 
-    if (board.inCheck(whiteTurn)) {
+    if (board.inCheck()) {
         errorMsg = "Illegal move: your king is in check and this move doesn't get it out of check.";
     } else {
         errorMsg = "Illegal move: that piece can't move there (blocked, wrong movement, or it would leave your king in check).";

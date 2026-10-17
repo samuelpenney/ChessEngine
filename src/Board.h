@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 using Bitboard = uint64_t;
 
@@ -85,6 +86,7 @@ public:
 struct Undo {
     uint8_t castling;
     int8_t epSq;
+    uint16_t halfmoveClock;
 };
 
 class Board {
@@ -99,6 +101,12 @@ class Board {
     // Bits: 1 white king side, 2 white queen side, 4 black king side, 8 black queen side
     uint8_t castling = 0;
     int epSq = -1;
+    bool whiteTurn = true;
+    // Plies since the last capture or pawn move, for the fifty-move rule
+    int halfmoveClock = 0;
+    uint64_t zobrist = 0;
+    // Hash of every earlier position in the game, oldest first, for repetition detection
+    std::vector<uint64_t> history;
 
 public:
     Board();
@@ -110,22 +118,33 @@ public:
     void printBoard() const;
     void initPieces();
     // Returns false and leaves the board unchanged if the FEN is malformed
-    bool loadFen(const std::string &fen, bool &whiteToMove);
+    bool loadFen(const std::string &fen);
     Piece pieceAt(int square) const;
+    bool isWhiteTurn() const;
+    uint64_t hash() const;
+    // Recomputes the hash from scratch, to check the incremental one
+    uint64_t computeHash() const;
 
     bool isSquareAttacked(int sq, bool byWhite) const;
     bool inCheck(bool white) const;
-    MoveList pseudoLegalMoves(bool white) const;
-    MoveList legalMoves(bool white) const;
-    bool hasLegalMove(bool white) const;
-    bool isCheckmate(bool white) const;
-    bool isStalemate(bool white) const;
+    // The rest of these are for the side to move
+    bool inCheck() const;
+    MoveList pseudoLegalMoves() const;
+    MoveList legalMoves() const;
+    bool hasLegalMove() const;
+    bool isCheckmate() const;
+    bool isStalemate() const;
     bool insufficientMaterial() const;
+    bool isFiftyMoveDraw() const;
+    // How many times the current position occurred before; 2 or more is threefold repetition
+    int repetitions() const;
     Undo makeMove(Move m);
     void unmakeMove(Move m, const Undo &undo);
 
 private:
-    void collectLegalMoves(bool white, MoveList &legal, bool stopAtFirst) const;
+    void collectLegalMoves(MoveList &legal, bool stopAtFirst) const;
+    bool leavesKingAttacked(Move m, int kingSq) const;
+    bool isSquareAttacked(int sq, bool byWhite, Bitboard occ, Bitboard ignore) const;
     void addMoves(MoveList &moves, int from, Piece piece, Bitboard targets) const;
     int kingSquare(bool white) const;
     Bitboard pinnedPieces(bool white, int kingSq) const;
