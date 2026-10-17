@@ -1,8 +1,8 @@
 #ifndef BOARD_H
 #define BOARD_H
 
+#include <cassert>
 #include <cstdint>
-#include <vector>
 
 using Bitboard = uint64_t;
 
@@ -33,11 +33,49 @@ constexpr char pieceToChar(Piece p) {
     return "PNBRQKpnbrqk."[static_cast<int>(p)];
 }
 
-struct Move {
-    int from;
-    int to;
-    PieceType promo;
-    Move(int f = 0, int t = 0, PieceType p = PieceType::None) : from(f), to(t), promo(p) {}
+enum class MoveFlag : uint8_t { Normal, DoublePush, EnPassant, Castle };
+
+// Packed into 32 bits: from (6) | to (6) | promo (3) | piece (4) | captured (4) | flag (2)
+class Move {
+    uint32_t data = 0;
+
+public:
+    Move() = default;
+    Move(int from, int to, Piece piece, Piece captured = Piece::None,
+         PieceType promo = PieceType::None, MoveFlag flag = MoveFlag::Normal)
+        : data(static_cast<uint32_t>(from) | static_cast<uint32_t>(to) << 6 |
+               static_cast<uint32_t>(promo) << 12 | static_cast<uint32_t>(piece) << 15 |
+               static_cast<uint32_t>(captured) << 19 | static_cast<uint32_t>(flag) << 23) {}
+
+    int from() const { return data & 0x3F; }
+    int to() const { return (data >> 6) & 0x3F; }
+    PieceType promo() const { return static_cast<PieceType>((data >> 12) & 0x7); }
+    Piece piece() const { return static_cast<Piece>((data >> 15) & 0xF); }
+    Piece captured() const { return static_cast<Piece>((data >> 19) & 0xF); }
+    MoveFlag flag() const { return static_cast<MoveFlag>((data >> 23) & 0x3); }
+};
+
+// Fixed-size list on the stack so move generation never allocates
+class MoveList {
+    Move moves[256];
+    int count = 0;
+
+public:
+    void push(Move m) {
+        assert(count < 256);
+        moves[count++] = m;
+    }
+    int size() const { return count; }
+    bool empty() const { return count == 0; }
+    const Move &operator[](int i) const { return moves[i]; }
+    const Move *begin() const { return moves; }
+    const Move *end() const { return moves + count; }
+};
+
+// What makeMove can't recover from the move itself
+struct Undo {
+    uint8_t castling;
+    int8_t epSq;
 };
 
 class Board {
@@ -49,11 +87,8 @@ class Board {
     Bitboard allOcc = 0;
     Piece mailbox[64];
 
-    bool whiteCastleK = false;
-    bool whiteCastleQ = false;
-    bool blackCastleK = false;
-    bool blackCastleQ = false;
-
+    // Bits: 1 white king side, 2 white queen side, 4 black king side, 8 black queen side
+    uint8_t castling = 0;
     int epSq = -1;
 
 public:
@@ -65,25 +100,26 @@ public:
 
     void printBoard() const;
     void initPieces();
-    void movePiece(int frSq, int toSq);
     Piece pieceAt(int square) const;
 
     bool isSquareAttacked(int sq, bool byWhite) const;
     bool inCheck(bool white) const;
-    std::vector<Move> pseudoLegalMoves(bool white) const;
-    std::vector<Move> legalMoves(bool white) const;
+    MoveList pseudoLegalMoves(bool white) const;
+    MoveList legalMoves(bool white) const;
+    bool hasLegalMove(bool white) const;
     bool isCheckmate(bool white) const;
     bool isStalemate(bool white) const;
     bool insufficientMaterial() const;
-    void makeMove(const Move &m);
+    Undo makeMove(Move m);
+    void unmakeMove(Move m, const Undo &undo);
 
 private:
-    void slide(std::vector<Move> &moves, int sq, bool white, bool diag, bool straight) const;
-    static bool inBounds(int f, int r);
-    static int popCount(Bitboard bb);
+    void collectLegalMoves(bool white, MoveList &legal, bool stopAtFirst) const;
+    void addMoves(MoveList &moves, int from, Piece piece, Bitboard targets) const;
     int kingSquare(bool white) const;
-    void addStep(std::vector<Move> &moves, int sq, int nf, int nr, bool white) const;
-    void clearSquare(int square);
+    Bitboard pinnedPieces(bool white, int kingSq) const;
+    void movePiece(int from, int to, Piece piece);
+    void removePiece(int square, Piece piece);
     void putPiece(int square, Piece piece);
     void syncFromBitboards();
     Bitboard &bitboardFor(Piece piece);

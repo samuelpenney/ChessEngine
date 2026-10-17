@@ -3,6 +3,7 @@
 void Game::init() {
     board.initPieces();
     whiteTurn = true;
+    legal = board.legalMoves(whiteTurn);
 }
 
 const Board &Game::getBoard() const {
@@ -13,17 +14,19 @@ bool Game::isWhiteTurn() const {
     return whiteTurn;
 }
 
+const MoveList &Game::legalMoves() const {
+    return legal;
+}
+
 GameOverStatus Game::checkGameOver() const {
-    if (board.isCheckmate(whiteTurn)) {
-        return GameOverStatus::Checkmate;
-    }
-    if (board.isStalemate(whiteTurn)) {
-        return GameOverStatus::Stalemate;
+    const bool check = board.inCheck(whiteTurn);
+    if (legal.empty()) {
+        return check ? GameOverStatus::Checkmate : GameOverStatus::Stalemate;
     }
     if (board.insufficientMaterial()) {
         return GameOverStatus::InsufficientMaterial;
     }
-    if (board.inCheck(whiteTurn)) {
+    if (check) {
         return GameOverStatus::InCheck;
     }
     return GameOverStatus::Playing;
@@ -45,14 +48,15 @@ bool Game::tryMove(int fromSq, int toSq, PieceType promo, std::string &errorMsg)
         return false;
     }
 
-    for (const Move &m : board.legalMoves(whiteTurn)) {
-        if (m.from != fromSq || m.to != toSq) continue;
-        if (m.promo != PieceType::None) {
+    for (const Move &m : legal) {
+        if (m.from() != fromSq || m.to() != toSq) continue;
+        if (m.promo() != PieceType::None) {
             PieceType want = promo != PieceType::None ? promo : PieceType::Queen;
-            if (m.promo != want) continue;
+            if (m.promo() != want) continue;
         }
         board.makeMove(m);
         whiteTurn = !whiteTurn;
+        legal = board.legalMoves(whiteTurn);
         return true;
     }
 

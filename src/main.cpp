@@ -206,20 +206,20 @@ void attemptMove(GuiState &s, int from, int to, PieceType promo) {
 void selectSquare(GuiState &s, int sq) {
     s.selected = sq;
     s.selectedMoves.clear();
-    for (const Move &m : s.game.getBoard().legalMoves(s.game.isWhiteTurn())) {
-        if (m.from == sq) s.selectedMoves.push_back(m);
+    for (const Move &m : s.game.legalMoves()) {
+        if (m.from() == sq) s.selectedMoves.push_back(m);
     }
 }
 
 void handleBoardClick(GuiState &s, int sq) {
     if (s.selected != -1) {
         for (const Move &m : s.selectedMoves) {
-            if (m.to != sq) continue;
-            if (m.promo != PieceType::None) {
-                s.promoFrom = m.from;
-                s.promoTo = m.to;
+            if (m.to() != sq) continue;
+            if (m.promo() != PieceType::None) {
+                s.promoFrom = m.from();
+                s.promoTo = m.to();
             } else {
-                attemptMove(s, m.from, m.to, PieceType::None);
+                attemptMove(s, m.from(), m.to(), PieceType::None);
             }
             return;
         }
@@ -325,8 +325,8 @@ void drawBoard(sf::RenderTarget &target, const sf::Font &font,
     }
 
     for (const Move &m : s.selectedMoves) {
-        sf::Vector2f center = squarePos(m.to) + sf::Vector2f(TILE / 2.f, TILE / 2.f);
-        bool capture = board.pieceAt(m.to) != Piece::None;
+        sf::Vector2f center = squarePos(m.to()) + sf::Vector2f(TILE / 2.f, TILE / 2.f);
+        bool capture = board.pieceAt(m.to()) != Piece::None;
         float radius = capture ? TILE / 2.f - 4.f : TILE / 7.f;
         sf::CircleShape hint(radius);
         hint.setOrigin({radius, radius});
