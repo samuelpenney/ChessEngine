@@ -1,7 +1,10 @@
 #include "Board.h"
 #include <iostream>
 #include <cmath>
-#include <cctype>
+
+Board::Board() {
+    syncFromBitboards();
+}
 
 bool Board::getBit(Bitboard bb, int square) {
     return (bb >> square) & 1ULL;
@@ -15,10 +18,6 @@ void Board::clearBit(Bitboard &bb, int square) {
     bb &= ~(1ULL << square);
 }
 
-bool Board::isWhitePiece(char c) {
-    return c >= 'A' && c <= 'Z';
-}
-
 void Board::printBoard() const {
     std::cout << "\n    a b c d e f g h\n";
     std::cout << "    ---------------\n";
@@ -26,82 +25,69 @@ void Board::printBoard() const {
         std::cout << (rank + 1) << " |" << " ";
         for (int file = 0; file < 8; ++file) {
             int square = rank * 8 + file;
-            char piece = pieceCharAt(square);
-            std::cout << piece << ' ';
+            std::cout << pieceToChar(pieceAt(square)) << ' ';
         }
         std::cout << '\n';
     }
 }
 
 void Board::initPieces() {
-    whitePawns = 0x000000000000FF00ULL;
-    whiteKnights = 0x0000000000000042ULL;
-    whiteRooks = 0x0000000000000081ULL;
-    whiteBishops = 0x0000000000000024ULL;
-    whiteQueens = 0x0000000000000008ULL;
-    whiteKing = 0x0000000000000010ULL;
+    bitboardFor(Piece::WhitePawn) = 0x000000000000FF00ULL;
+    bitboardFor(Piece::WhiteKnight) = 0x0000000000000042ULL;
+    bitboardFor(Piece::WhiteRook) = 0x0000000000000081ULL;
+    bitboardFor(Piece::WhiteBishop) = 0x0000000000000024ULL;
+    bitboardFor(Piece::WhiteQueen) = 0x0000000000000008ULL;
+    bitboardFor(Piece::WhiteKing) = 0x0000000000000010ULL;
 
-    blackPawns = 0x00FF000000000000ULL;
-    blackKnights = 0x4200000000000000ULL;
-    blackRooks = 0x8100000000000000ULL;
-    blackBishops = 0x2400000000000000ULL;
-    blackQueens = 0x0800000000000000ULL;
-    blackKing = 0x1000000000000000ULL;
+    bitboardFor(Piece::BlackPawn) = 0x00FF000000000000ULL;
+    bitboardFor(Piece::BlackKnight) = 0x4200000000000000ULL;
+    bitboardFor(Piece::BlackRook) = 0x8100000000000000ULL;
+    bitboardFor(Piece::BlackBishop) = 0x2400000000000000ULL;
+    bitboardFor(Piece::BlackQueen) = 0x0800000000000000ULL;
+    bitboardFor(Piece::BlackKing) = 0x1000000000000000ULL;
 
     whiteCastleK = whiteCastleQ = blackCastleK = blackCastleQ = true;
     epSq = -1;
+    syncFromBitboards();
 }
 
 void Board::movePiece(int frSq, int toSq) {
-    char piece = pieceCharAt(frSq);
-    if (piece == '.') {
+    Piece piece = mailbox[frSq];
+    if (piece == Piece::None) {
         std::cerr << "No piece on from square " << frSq << std::endl;
         return;
     }
 
     clearSquare(toSq);
-    Bitboard &bb = bitboardFor(piece);
-    moveOnBitBoard(bb, frSq, toSq);
+    clearSquare(frSq);
+    putPiece(toSq, piece);
 }
 
-char Board::pieceCharAt(int square) const {
-    if (getBit(whitePawns, square)) return 'P';
-    if (getBit(whiteKnights, square)) return 'N';
-    if (getBit(whiteRooks, square)) return 'R';
-    if (getBit(whiteBishops, square)) return 'B';
-    if (getBit(whiteQueens, square)) return 'Q';
-    if (getBit(whiteKing, square)) return 'K';
-    if (getBit(blackPawns, square)) return 'p';
-    if (getBit(blackKnights, square)) return 'n';
-    if (getBit(blackRooks, square)) return 'r';
-    if (getBit(blackBishops, square)) return 'b';
-    if (getBit(blackQueens, square)) return 'q';
-    if (getBit(blackKing, square)) return 'k';
-
-    return '.';
+Piece Board::pieceAt(int square) const {
+    return mailbox[square];
 }
 
 bool Board::isSquareAttacked(int sq, bool byWhite) const {
     const int f = sq & 7, r = sq >> 3;
-    const char P = byWhite ? 'P' : 'p';
-    const char N = byWhite ? 'N' : 'n';
-    const char B = byWhite ? 'B' : 'b';
-    const char R = byWhite ? 'R' : 'r';
-    const char Q = byWhite ? 'Q' : 'q';
-    const char K = byWhite ? 'K' : 'k';
+    const Piece P = makePiece(PieceType::Pawn, byWhite);
+    const Piece N = makePiece(PieceType::Knight, byWhite);
+    const Piece B = makePiece(PieceType::Bishop, byWhite);
+    const Piece R = makePiece(PieceType::Rook, byWhite);
+    const Piece Q = makePiece(PieceType::Queen, byWhite);
+    const Piece K = makePiece(PieceType::King, byWhite);
 
     //Pawns
     int pr = byWhite ? r - 1 : r + 1;
     for (int df = -1; df <= 1; df += 2) {
         int pf = f + df;
-        if (inBounds(pf, pr) && pieceCharAt(pr * 8 + pf) == P) return true;
+        if (inBounds(pf, pr) && pieceAt(pr * 8 + pf) == P) return true;
     }
 
     // Knights
     static const int kn[8][2] = {{1,2},{2,1},{2,-1},{1,-2},{-1,-2},{-2,-1},{-2,1},{-1,2}};
     for (auto &d : kn) {
         int nf = f + d[0], nr = r + d[1];
-        if (inBounds(nf, nr) && pieceCharAt(nr * 8 + nf) == N) return true;
+        if (inBounds(nf, nr) && pieceAt(nr * 8 + nf) == N) return true;
     }
 
     //King
@@ -109,7 +95,7 @@ bool Board::isSquareAttacked(int sq, bool byWhite) const {
         for (int dr = -1; dr <= 1; ++dr) {
             if (df == 0 && dr == 0) continue;
             int nf = f + df, nr = r + dr;
-            if (inBounds(nf, nr) && pieceCharAt(nr * 8 + nf) == K) return true;
+            if (inBounds(nf, nr) && pieceAt(nr * 8 + nf) == K) return true;
         }
     }
 
@@ -119,8 +105,8 @@ bool Board::isSquareAttacked(int sq, bool byWhite) const {
     for (auto &d : straight) {
         int nf = f + d[0], nr = r + d[1];
         while (inBounds(nf, nr)) {
-            char c = pieceCharAt(nr * 8 + nf);
-            if (c != '.') {
+            Piece c = pieceAt(nr * 8 + nf);
+            if (c != Piece::None) {
                 if (c == R || c == Q) return true; break;
             }
             nf += d[0];
@@ -130,8 +116,8 @@ bool Board::isSquareAttacked(int sq, bool byWhite) const {
     for (auto &d : diagonal) {
         int nf = f + d[0], nr = r + d[1];
         while (inBounds(nf, nr)) {
-            char c = pieceCharAt(nr * 8 + nf);
-            if (c != '.') {
+            Piece c = pieceAt(nr * 8 + nf);
+            if (c != Piece::None) {
                 if (c == B || c == Q) return true; break;
             }
             nf += d[0];
@@ -149,19 +135,19 @@ bool Board::inCheck(bool white) const {
 
 std::vector<Move> Board::pseudoLegalMoves(bool white) const {
     std::vector<Move> moves;
-    for (int sq = 0; sq < 64; ++sq) {
-        char c = pieceCharAt(sq);
-        if (c == '.' || isWhitePiece(c) != white) continue;
+    for (Bitboard own = white ? whiteOcc : blackOcc; own; own &= own - 1) {
+        const int sq = __builtin_ctzll(own);
+        const Piece c = mailbox[sq];
         const int f = sq & 7, r = sq >> 3;
 
-        switch (std::toupper(c)) {
-            case 'P': {
+        switch (pieceType(c)) {
+            case PieceType::Pawn: {
                 int dir = white ? 1 : -1;
                 int startRank = white ? 1 : 6;
                 int lastRank = white ? 7 : 0;
                 auto add = [&](int to) {
                     if ((to >> 3) == lastRank) {
-                        for (char p : {'Q', 'R', 'B', 'N'}) {
+                        for (PieceType p : {PieceType::Queen, PieceType::Rook, PieceType::Bishop, PieceType::Knight}) {
                             moves.emplace_back(sq, to, p);
                         }
                     } else {
@@ -171,10 +157,10 @@ std::vector<Move> Board::pseudoLegalMoves(bool white) const {
                 int nr = r + dir;
                 if (nr < 0 || nr > 7) break;
                 int one = nr * 8 + f;
-                if (pieceCharAt(one) == '.') {
+                if (pieceAt(one) == Piece::None) {
                     add(one);
                     int two = one + dir * 8;
-                    if (r == startRank && pieceCharAt(two) == '.') {
+                    if (r == startRank && pieceAt(two) == Piece::None) {
                         moves.emplace_back(sq, two);
                     }
                 }
@@ -182,26 +168,26 @@ std::vector<Move> Board::pseudoLegalMoves(bool white) const {
                     int nf = f + df;
                     if (nf < 0 || nf > 7) continue;
                     int to = nr * 8 + nf;
-                    char tc = pieceCharAt(to);
-                    if (tc != '.' && isWhitePiece(tc) != white) {
+                    Piece tc = pieceAt(to);
+                    if (tc != Piece::None && isWhite(tc) != white) {
                         add(to);
-                    } else if (tc == '.' && to == epSq) {
+                    } else if (tc == Piece::None && to == epSq) {
                         add(to);
                     }
                 }
                 break;
             }
-            case 'N': {
+            case PieceType::Knight: {
                 static const int kn[8][2] = {{1,2},{2,1},{2,-1},{1,-2},{-1,-2},{-2,-1},{-2,1},{-1,2}};
                 for (auto &d : kn) {
                     addStep(moves, sq, f + d[0], r + d[1], white);
                 }
                 break;
             }
-            case 'B': slide(moves, sq, white, true, false); break;
-            case 'R': slide(moves, sq, white, false, true); break;
-            case 'Q': slide(moves, sq, white, true, true); break;
-            case 'K': {
+            case PieceType::Bishop: slide(moves, sq, white, true, false); break;
+            case PieceType::Rook: slide(moves, sq, white, false, true); break;
+            case PieceType::Queen: slide(moves, sq, white, true, true); break;
+            case PieceType::King: {
                 for (int df = -1; df <= 1; ++df) {
                     for (int dr = -1; dr <= 1; ++dr) {
                         if (df == 0 && dr == 0) continue;
@@ -209,22 +195,22 @@ std::vector<Move> Board::pseudoLegalMoves(bool white) const {
                     }
                 }
                 int base = white ? 0 : 56;
-                char rook = white ? 'R' : 'r';
+                Piece rook = makePiece(PieceType::Rook, white);
                 bool canK = white ? whiteCastleK : blackCastleK;
                 bool canQ = white ? whiteCastleQ : blackCastleQ;
                 if (sq == base + 4 && !isSquareAttacked(sq, !white)) {
-                    if (canK && pieceCharAt(base + 7) == rook &&
-                        pieceCharAt(base + 5) == '.' &&
-                        pieceCharAt(base + 6) == '.' &&
+                    if (canK && pieceAt(base + 7) == rook &&
+                        pieceAt(base + 5) == Piece::None &&
+                        pieceAt(base + 6) == Piece::None &&
                         !isSquareAttacked(base + 5, !white) &&
                         !isSquareAttacked(base + 6, !white)) {
 
                         moves.emplace_back(sq, base + 6);
                     }
-                    if (canQ && pieceCharAt(base + 0) == rook &&
-                        pieceCharAt(base + 1) == '.' &&
-                        pieceCharAt(base + 2) == '.' &&
-                        pieceCharAt(base + 3) == '.' &&
+                    if (canQ && pieceAt(base + 0) == rook &&
+                        pieceAt(base + 1) == Piece::None &&
+                        pieceAt(base + 2) == Piece::None &&
+                        pieceAt(base + 3) == Piece::None &&
                         !isSquareAttacked(base + 3, !white) &&
                         !isSquareAttacked(base + 2, !white)) {
 
@@ -233,6 +219,7 @@ std::vector<Move> Board::pseudoLegalMoves(bool white) const {
                 }
                 break;
             }
+            case PieceType::None: break;
         }
     }
     return moves;
@@ -257,26 +244,29 @@ bool Board::isStalemate(bool white) const {
 }
 
 bool Board::insufficientMaterial() const {
-    if (whitePawns || blackPawns || whiteRooks || blackRooks || whiteQueens || blackQueens) return false;
-    return popCount(whiteKnights | whiteBishops | blackKnights | blackBishops) <= 1;
+    for (PieceType t : {PieceType::Pawn, PieceType::Rook, PieceType::Queen}) {
+        if (bitboardFor(makePiece(t, true)) || bitboardFor(makePiece(t, false))) return false;
+    }
+    return popCount(bitboardFor(Piece::WhiteKnight) | bitboardFor(Piece::WhiteBishop) |
+                    bitboardFor(Piece::BlackKnight) | bitboardFor(Piece::BlackBishop)) <= 1;
 }
 
 void Board::makeMove(const Move &m) {
-    char piece = pieceCharAt(m.from);
-    if (piece == '.') return;
-    bool white = isWhitePiece(piece);
-    char type = static_cast<char>(std::toupper(piece));
-    char target = pieceCharAt(m.to);
+    Piece piece = pieceAt(m.from);
+    if (piece == Piece::None) return;
+    bool white = isWhite(piece);
+    PieceType type = pieceType(piece);
+    Piece target = pieceAt(m.to);
     int fromFile = m.from & 7, toFile = m.to & 7;
 
     // en passant
-    if (type == 'P' && fromFile != toFile && target == '.') {
+    if (type == PieceType::Pawn && fromFile != toFile && target == Piece::None) {
         int capturedSq = white ? m.to - 8 : m.to + 8;
         clearSquare(capturedSq);
     }
 
     // King moves two files, bringing the rook across
-    if (type == 'K' && std::abs(toFile - fromFile) == 2) {
+    if (type == PieceType::King && std::abs(toFile - fromFile) == 2) {
         if (toFile > fromFile) {
             movePiece(m.from + 3, m.from + 1);
         } else {
@@ -286,10 +276,10 @@ void Board::makeMove(const Move &m) {
     movePiece(m.from, m.to);
 
     //promo
-    if (type == 'P' && ((m.to >> 3) == 7 || (m.to >> 3) == 0)) {
-        char promo = m.promo ? static_cast<char>(std::toupper(m.promo)) : 'Q';
+    if (type == PieceType::Pawn && ((m.to >> 3) == 7 || (m.to >> 3) == 0)) {
+        PieceType promo = m.promo != PieceType::None ? m.promo : PieceType::Queen;
         clearSquare(m.to);
-        setBit(bitboardFor(white ? promo : static_cast<char>(std::tolower(promo))), m.to);
+        putPiece(m.to, makePiece(promo, white));
     }
 
     // move a king/rook, or taking a rook on its home square
@@ -314,7 +304,7 @@ void Board::makeMove(const Move &m) {
 
     //en passant target is only available for one move after the double step btw
     epSq = -1;
-    if (type == 'P' && std::abs(m.to - m.from) == 16) {
+    if (type == PieceType::Pawn && std::abs(m.to - m.from) == 16) {
         epSq = (m.from + m.to) / 2;
     }
 }
@@ -330,11 +320,11 @@ void Board::slide(std::vector<Move> &moves, int sq, bool white, bool diag, bool 
         int nf = (sq & 7) + dirs[i][0], nr = (sq >> 3) + dirs[i][1];
         while (inBounds(nf, nr)) {
             int to = nr * 8 + nf;
-            char tc = pieceCharAt(to);
-            if (tc == '.') {
+            Piece tc = pieceAt(to);
+            if (tc == Piece::None) {
                 moves.emplace_back(sq, to);
             } else {
-                if (isWhitePiece(tc) != white) {
+                if (isWhite(tc) != white) {
                     moves.emplace_back(sq, to);
                 }
                 break;
@@ -357,56 +347,55 @@ int Board::popCount(Bitboard bb) {
 }
 
 int Board::kingSquare(bool white) const {
-    Bitboard k = white ? whiteKing : blackKing;
+    Bitboard k = bitboardFor(makePiece(PieceType::King, white));
     for (int sq = 0; sq < 64; ++sq) {
         if (getBit(k, sq)) return sq;
     }
     return -1;
 }
 
-void Board::moveOnBitBoard(Bitboard &bb, int frSq, int toSq) {
-    clearBit(bb, frSq);
-    setBit(bb, toSq);
-}
-
 void Board::addStep(std::vector<Move> &moves, int sq, int nf, int nr, bool white) const {
     if (!inBounds(nf, nr)) return;
     int to = nr * 8 + nf;
-    char tc = pieceCharAt(to);
-    if (tc == '.' || isWhitePiece(tc) != white) {
+    Piece tc = pieceAt(to);
+    if (tc == Piece::None || isWhite(tc) != white) {
         moves.emplace_back(sq, to);
     }
 }
 
 void Board::clearSquare(int square) {
-    clearBit(whitePawns, square);
-    clearBit(whiteKnights, square);
-    clearBit(whiteRooks, square);
-    clearBit(whiteBishops, square);
-    clearBit(whiteQueens, square);
-    clearBit(whiteKing, square);
-    clearBit(blackPawns, square);
-    clearBit(blackKnights, square);
-    clearBit(blackRooks, square);
-    clearBit(blackBishops, square);
-    clearBit(blackQueens, square);
-    clearBit(blackKing, square);
+    Piece piece = mailbox[square];
+    if (piece == Piece::None) return;
+    clearBit(bitboardFor(piece), square);
+    clearBit(isWhite(piece) ? whiteOcc : blackOcc, square);
+    clearBit(allOcc, square);
+    mailbox[square] = Piece::None;
 }
 
-Bitboard &Board::bitboardFor(char piece) {
-    switch (piece) {
-        case 'P': return whitePawns;
-        case 'N': return whiteKnights;
-        case 'R': return whiteRooks;
-        case 'B': return whiteBishops;
-        case 'Q': return whiteQueens;
-        case 'K': return whiteKing;
-        case 'p': return blackPawns;
-        case 'n': return blackKnights;
-        case 'r': return blackRooks;
-        case 'b': return blackBishops;
-        case 'q': return blackQueens;
-        case 'k': return blackKing;
-        default: return blackKing;
+// Square must be empty
+void Board::putPiece(int square, Piece piece) {
+    setBit(bitboardFor(piece), square);
+    setBit(isWhite(piece) ? whiteOcc : blackOcc, square);
+    setBit(allOcc, square);
+    mailbox[square] = piece;
+}
+
+// Rebuild mailbox and occupancy after the piece bitboards are set directly
+void Board::syncFromBitboards() {
+    whiteOcc = blackOcc = 0;
+    for (int sq = 0; sq < 64; ++sq) mailbox[sq] = Piece::None;
+    for (int i = 0; i < 12; ++i) {
+        Piece piece = static_cast<Piece>(i);
+        (isWhite(piece) ? whiteOcc : blackOcc) |= pieceBB[i];
+        for (Bitboard b = pieceBB[i]; b; b &= b - 1) mailbox[__builtin_ctzll(b)] = piece;
     }
+    allOcc = whiteOcc | blackOcc;
+}
+
+Bitboard &Board::bitboardFor(Piece piece) {
+    return pieceBB[static_cast<int>(piece)];
+}
+
+Bitboard Board::bitboardFor(Piece piece) const {
+    return pieceBB[static_cast<int>(piece)];
 }

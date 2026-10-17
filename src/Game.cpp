@@ -1,5 +1,4 @@
 #include "Game.h"
-#include <cctype>
 
 void Game::init() {
     board.initPieces();
@@ -30,26 +29,26 @@ GameOverStatus Game::checkGameOver() const {
     return GameOverStatus::Playing;
 }
 
-bool Game::tryMove(int fromSq, int toSq, char promo, std::string &errorMsg) {
-    char piece = board.pieceCharAt(fromSq);
-    if (piece == '.') {
+bool Game::tryMove(int fromSq, int toSq, PieceType promo, std::string &errorMsg) {
+    Piece piece = board.pieceAt(fromSq);
+    if (piece == Piece::None) {
         errorMsg = "Illegal move: there is no piece on that square.";
         return false;
     }
-    bool isWhite = Board::isWhitePiece(piece);
-    if (whiteTurn && !isWhite) {
+    bool pieceIsWhite = isWhite(piece);
+    if (whiteTurn && !pieceIsWhite) {
         errorMsg = "Illegal move: it's White's turn, but that square has a black piece.";
         return false;
     }
-    if (!whiteTurn && isWhite) {
+    if (!whiteTurn && pieceIsWhite) {
         errorMsg = "Illegal move: it's Black's turn, but that square has a white piece.";
         return false;
     }
 
     for (const Move &m : board.legalMoves(whiteTurn)) {
         if (m.from != fromSq || m.to != toSq) continue;
-        if (m.promo) {
-            char want = promo ? static_cast<char>(std::toupper(promo)) : 'Q';
+        if (m.promo != PieceType::None) {
+            PieceType want = promo != PieceType::None ? promo : PieceType::Queen;
             if (m.promo != want) continue;
         }
         board.makeMove(m);

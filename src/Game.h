@@ -21,7 +21,7 @@ public:
     const Board &getBoard() const;
     bool isWhiteTurn() const;
     GameOverStatus checkGameOver() const;
-    bool tryMove(int fromSq, int toSq, char promo, std::string &errorMsg);
+    bool tryMove(int fromSq, int toSq, PieceType promo, std::string &errorMsg);
     static int coordToSquare(const std::string &coord);
 };
 

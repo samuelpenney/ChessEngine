@@ -1,10 +1,9 @@
 #include "Game.h"
 #include <iostream>
 #include <string>
-#include <cctype>
 #include <vector>
 
-static bool parseInput(const std::string &input, int &fromSq, int &toSq, char &promo) {
+static bool parseInput(const std::string &input, int &fromSq, int &toSq, PieceType &promo) {
     std::string s;
     s.reserve(input.size());
     for (char c : input) {
@@ -32,13 +31,20 @@ static bool parseInput(const std::string &input, int &fromSq, int &toSq, char &p
         return false;
     }
 
-    promo = 0;
+    promo = PieceType::None;
     if (parts.size() == 3) {
-        if (parts[2].size() != 1 || std::string("QRBNqrbn").find(parts[2][0]) == std::string::npos) {
+        if (parts[2].size() == 1) {
+            switch (parts[2][0]) {
+                case 'Q': case 'q': promo = PieceType::Queen; break;
+                case 'R': case 'r': promo = PieceType::Rook; break;
+                case 'B': case 'b': promo = PieceType::Bishop; break;
+                case 'N': case 'n': promo = PieceType::Knight; break;
+            }
+        }
+        if (promo == PieceType::None) {
             std::cerr << "Invalid promotion piece (use q, r, b or n): " << parts[2] << std::endl;
             return false;
         }
-        promo = static_cast<char>(std::toupper(parts[2][0]));
     }
 
     return true;
@@ -62,7 +68,7 @@ int main() {
             }
 
             int fromSq, toSq;
-            char promo;
+            PieceType promo;
             if (!parseInput(input, fromSq, toSq, promo)) {
                 std::cerr << "Try again: " << input << std::endl;
                 continue;

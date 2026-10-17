@@ -1,6 +1,5 @@
 #include "Game.h"
 #include <SFML/Graphics.hpp>
-#include <cctype>
 #include <filesystem>
 #include <iostream>
 #include <map>
@@ -32,7 +31,7 @@ const sf::Color BTN_HOVER(98, 98, 110);
 const sf::Color TEXT_COLOR(235, 235, 235);
 const sf::Color MUTED_TEXT(150, 150, 150);
 
-const char PROMO_CHOICES[4] = {'Q', 'R', 'B', 'N'};
+const PieceType PROMO_CHOICES[4] = {PieceType::Queen, PieceType::Rook, PieceType::Bishop, PieceType::Knight};
 
 enum class Screen { Menu, Playing };
 
@@ -83,15 +82,15 @@ bool loadFont(sf::Font &font) {
     return true;
 }
 
-bool loadTextures(std::map<char, sf::Texture> &textures) {
-    const std::map<char, std::string> names = {
-        {'P', "Pawn"}, {'N', "Knight"}, {'B', "Bishop"},
-        {'R', "Rook"}, {'Q', "Queen"}, {'K', "King"}};
+bool loadTextures(std::map<Piece, sf::Texture> &textures) {
+    const std::map<PieceType, std::string> names = {
+        {PieceType::Pawn, "Pawn"}, {PieceType::Knight, "Knight"}, {PieceType::Bishop, "Bishop"},
+        {PieceType::Rook, "Rook"}, {PieceType::Queen, "Queen"}, {PieceType::King, "King"}};
 
     for (const auto &[type, name] : names) {
         for (bool white : {true, false}) {
             std::string path = findAsset(std::string("images/") + (white ? "w" : "b") + name + ".png");
-            char key = white ? type : static_cast<char>(std::tolower(type));
+            Piece key = makePiece(type, white);
             sf::Texture tex;
             if (!tex.loadFromFile(path)) {
                 std::cerr << "Failed to load " << path << std::endl;
@@ -146,8 +145,8 @@ void drawButton(sf::RenderTarget &target, const sf::Font &font, const Button &bt
              btn.rect.position + btn.rect.size / 2.f, TEXT_COLOR, true);
 }
 
-void drawPiece(sf::RenderTarget &target, const std::map<char, sf::Texture> &textures,
-               char piece, sf::Vector2f pos) {
+void drawPiece(sf::RenderTarget &target, const std::map<Piece, sf::Texture> &textures,
+               Piece piece, sf::Vector2f pos) {
     auto it = textures.find(piece);
     if (it == textures.end()) return;
     sf::Sprite sprite(it->second);
@@ -191,7 +190,7 @@ void clearSelection(GuiState &s) {
     s.selectedMoves.clear();
 }
 
-void attemptMove(GuiState &s, int from, int to, char promo) {
+void attemptMove(GuiState &s, int from, int to, PieceType promo) {
     std::string error;
     if (s.game.tryMove(from, to, promo, error)) {
         s.lastFrom = from;
@@ -216,18 +215,18 @@ void handleBoardClick(GuiState &s, int sq) {
     if (s.selected != -1) {
         for (const Move &m : s.selectedMoves) {
             if (m.to != sq) continue;
-            if (m.promo) {
+            if (m.promo != PieceType::None) {
                 s.promoFrom = m.from;
                 s.promoTo = m.to;
             } else {
-                attemptMove(s, m.from, m.to, 0);
+                attemptMove(s, m.from, m.to, PieceType::None);
             }
             return;
         }
     }
 
-    char piece = s.game.getBoard().pieceCharAt(sq);
-    bool ownPiece = piece != '.' && Board::isWhitePiece(piece) == s.game.isWhiteTurn();
+    Piece piece = s.game.getBoard().pieceAt(sq);
+    bool ownPiece = piece != Piece::None && isWhite(piece) == s.game.isWhiteTurn();
     if (ownPiece && sq != s.selected) {
         selectSquare(s, sq);
     } else {
@@ -290,7 +289,7 @@ void drawMenu(sf::RenderTarget &target, const sf::Font &font, sf::Vector2f mouse
 }
 
 void drawBoard(sf::RenderTarget &target, const sf::Font &font,
-               const std::map<char, sf::Texture> &textures, const GuiState &s) {
+               const std::map<Piece, sf::Texture> &textures, const GuiState &s) {
     const Board &board = s.game.getBoard();
 
     for (int sq = 0; sq < 64; ++sq) {
@@ -305,9 +304,9 @@ void drawBoard(sf::RenderTarget &target, const sf::Font &font,
     if (s.selected != -1) fillSquare(target, s.selected, SELECT_COLOR);
 
     if (board.inCheck(s.game.isWhiteTurn())) {
-        char king = s.game.isWhiteTurn() ? 'K' : 'k';
+        Piece king = makePiece(PieceType::King, s.game.isWhiteTurn());
         for (int sq = 0; sq < 64; ++sq) {
-            if (board.pieceCharAt(sq) == king) fillSquare(target, sq, CHECK_COLOR);
+            if (board.pieceAt(sq) == king) fillSquare(target, sq, CHECK_COLOR);
         }
     }
 
@@ -321,13 +320,13 @@ void drawBoard(sf::RenderTarget &target, const sf::Font &font,
     }
 
     for (int sq = 0; sq < 64; ++sq) {
-        char piece = board.pieceCharAt(sq);
-        if (piece != '.') drawPiece(target, textures, piece, squarePos(sq));
+        Piece piece = board.pieceAt(sq);
+        if (piece != Piece::None) drawPiece(target, textures, piece, squarePos(sq));
     }
 
     for (const Move &m : s.selectedMoves) {
         sf::Vector2f center = squarePos(m.to) + sf::Vector2f(TILE / 2.f, TILE / 2.f);
-        bool capture = board.pieceCharAt(m.to) != '.';
+        bool capture = board.pieceAt(m.to) != Piece::None;
         float radius = capture ? TILE / 2.f - 4.f : TILE / 7.f;
         sf::CircleShape hint(radius);
         hint.setOrigin({radius, radius});
@@ -343,7 +342,7 @@ void drawBoard(sf::RenderTarget &target, const sf::Font &font,
     }
 }
 
-void drawPromotionPicker(sf::RenderTarget &target, const std::map<char, sf::Texture> &textures,
+void drawPromotionPicker(sf::RenderTarget &target, const std::map<Piece, sf::Texture> &textures,
                          const GuiState &s, sf::Vector2f mouse) {
     sf::RectangleShape dim({BOARD_SIZE, BOARD_SIZE});
     dim.setPosition({BOARD_X, BOARD_Y});
@@ -359,8 +358,7 @@ void drawPromotionPicker(sf::RenderTarget &target, const std::map<char, sf::Text
         bg.setOutlineThickness(2.f);
         bg.setOutlineColor(DARK_SQ);
         target.draw(bg);
-        char piece = white ? PROMO_CHOICES[i] : static_cast<char>(std::tolower(PROMO_CHOICES[i]));
-        drawPiece(target, textures, piece, r.position);
+        drawPiece(target, textures, makePiece(PROMO_CHOICES[i], white), r.position);
     }
 }
 
@@ -390,7 +388,7 @@ int main() {
         return 1;
     }
 
-    std::map<char, sf::Texture> textures;
+    std::map<Piece, sf::Texture> textures;
     if (!loadTextures(textures)) {
         return 1;
     }
