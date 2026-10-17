@@ -222,6 +222,37 @@ class Board {
                         }
                         break;
                     }
+                    case 'N': {
+                        static const int kn[8][2] = {{1,2},{2,1},{2,-1},{1,-2},{-1,-2},{-2,-1},{-2,1},{-1,2}};
+                        for (auto &d : kn) {
+                            addStep(moves, sq, f + d[0], r + d[1], white);
+                        }
+                        break;
+                    }
+                    case 'B': slide(moves, sq, white, true, false); break;
+                    case 'R': slide(moves, sq, white, false, true); break;
+                    case 'Q': slide(moves, sq, white, true, true); break;
+                    case 'K': {
+                        for (int df = -1; df <= 1; ++df) {
+                            for (int dr = -1; dr <= 1; ++ dr) {
+                                if (df == 0 && dr == 0) continue;
+                                addStep(moves, sq, f + df, r + dr, white);
+                            }
+                            int base = white ? 0 : 56; // Castle
+                            char rook = white ? 'R' : 'r';
+                            bool canK = white ? whiteCastleK : blackCastleK;
+                            bool canQ = white ? whiteCastleQ : blackCastleQ;
+                            if (sq == base + 4 && !isSquareAttacked(sq, !white)) {
+                                if (canK && pieceCharAt(base + 7) == rook &&
+                                    pieceCharAt(base + 5) == '.' &&
+                                    pieceCharAt(base + 6) == '.' &&
+                                    !isSquareAttacked(base + 5, !white) &&
+                                    !isSquareAttacked(base + 6, !white)) {
+                                        moves.emplace_back(sq, base + 6);
+                                    }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -230,6 +261,29 @@ class Board {
             return c >= 'A' && c <= 'Z';
         }
     private:
+
+        void slide(std::vector<Move> &moves, int sq, bool white, bool diag, bool straight) const {
+            static const int dirs[8][2] = {{1,0},{-1,0},{0,1},{0,-1},{1,1},{1,-1},{-1,1},{-1,-1}};
+            
+            for (int i = 0; i < 8; ++i) {
+                if (i < 4 && !straight) continue;
+                if (i >= 4 && !diag) continue;
+                int nf = (sq & 7) + dirs[i][0], nr = (sq >> 3) + dirs[i][1];
+                while (inBounds(nf, nr)) {
+                    int to = nr * 8 + nf;
+                    char tc = pieceCharAt(to);
+                    if (tc == '.') {
+                        moves.emplace_back(sq, to);
+                    } else {
+                        if (isWhitePiece(tc) != white) {
+                            moves.emplace_back(sq, to);
+                        }
+                        break;
+                    }
+                    nf += dirs[i][0]; nr += dirs[i][1];
+                }
+            }
+        }
 
         static bool inBounds(int f, int r) {
             return f >= 0 && f < 8 && r >= 0 && r < 8;
@@ -246,6 +300,15 @@ class Board {
         static void moveOnBitBoard(Bitboard &bb, int frSq, int toSq) {
             clearBit(bb, frSq);
             setBit(bb, toSq);
+        }
+        
+        void addStep(std::vector<Move> &moves, int sq, int nf, int nr, bool white) const {
+            if (!inBounds(nf, nr)) return;
+            int to = nr * 8 + nf;
+            char tc = pieceCharAt(to);
+            if (tc == '.' || isWhitePiece(tc) != white) {
+                moves.emplace_back(sq, to);
+            }
         }
 
         void clearSquare(int square){
