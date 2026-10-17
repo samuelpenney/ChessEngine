@@ -4,6 +4,12 @@
 #define BOARD_CPP
 
 using Bitboard = uint64_t;
+struct Move {
+    int from;
+    int to;
+    char promo;
+    Move(int f = 0, int t = 0, char p = 0) : from(f), to(t), promo(p) {}
+};
 
 class Board {
     Bitboard whitePawns = 0; // Creating bitboards for each piece type
@@ -164,11 +170,77 @@ class Board {
             }
             return false;
         }
+
+        bool inCheck(bool white) const {
+            int k = kingSquare(white);
+            if (k < 0) return false;
+            return isSquareAttacked(k, !white);
+        }
+
+        //legal moves
+        std::vector<Move> pseudoLegalMoves(bool white) const {
+            std::vector<Move> moves;
+            for (int sq = 0; sq < 64; ++sq) {
+                char c = pieceCharAt(sq);
+                if (c == '.' || isWhitePiece(c) != white) continue;
+                const int f = sq & 7, r = sq >> 3;
+
+                switch (std::toupper(c)) {
+                    case 'P': {
+                        int dir = white ? 1 : -1;
+                        int startRank = white ? 1 : 6;
+                        int lastRank = white ? 7 : 0;
+                        auto add = [&](int to) {
+                            if ((to >> 3) == lastRank) {
+                                for (char p : {'Q', 'R', 'B', 'N'}) { // promo
+                                    moves.emplace_back(sq, to, p);
+                                }
+                            } else {
+                                moves.emplace_back(sq, to);
+                            }
+                        };
+                        int nr = r + dir;
+                        if (nr < 0 || nr > 7) break;
+                        int one = nr * 8 + f;
+                        if (pieceCharAt(one) == '.') {
+                            add(one);
+                            int two = one + dir * 8;
+                            if (r == startRank&& pieceCharAt(two) == '.') {
+                                moves.emplace_back(sq, two);
+                            }
+                        }
+                        for (int df = -1; df <= 1; df += 2) {
+                            int nf = f + df;
+                            if (nf < 0 || nf > 7) continue;
+                            int to = nr * 8 + nf;
+                            char tc = pieceCharAt(to);
+                            if (tc != '.' && isWhitePiece(tc) != white) {
+                                add(to);
+                            } else if (tc == '.' && to == epSq) { // en passant
+                                add(to);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
     
+        static bool isWhitePiece(char c) {
+            return c >= 'A' && c <= 'Z';
+        }
     private:
 
         static bool inBounds(int f, int r) {
             return f >= 0 && f < 8 && r >= 0 && r < 8;
+        }
+
+        int kingSquare(bool white) const {
+            Bitboard k = white ? whiteKing : blackKing;
+            for (int sq = 0; sq < 64; ++ sq) {
+                if (getBit(k, sq)) return sq;
+            }
+            return -1;
         }
 
         static void moveOnBitBoard(Bitboard &bb, int frSq, int toSq) {
