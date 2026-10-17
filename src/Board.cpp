@@ -1,5 +1,6 @@
 #include "Board.h"
 #include <iostream>
+#include <sstream>
 
 namespace {
 
@@ -135,6 +136,65 @@ void Board::initPieces() {
     castling = WhiteKingSide | WhiteQueenSide | BlackKingSide | BlackQueenSide;
     epSq = -1;
     syncFromBitboards();
+}
+
+bool Board::loadFen(const std::string &fen, bool &whiteToMove) {
+    std::istringstream in(fen);
+    std::string placement, side, rights = "-", ep = "-";
+    if (!(in >> placement >> side)) return false;
+    in >> rights >> ep;  // optional, as are the move counters, which aren't tracked
+
+    Board b;
+    int rank = 7, file = 0;
+    for (char c : placement) {
+        if (c == '/') {
+            if (file != 8 || rank == 0) return false;
+            --rank;
+            file = 0;
+        } else if (c >= '1' && c <= '8') {
+            file += c - '0';
+            if (file > 8) return false;
+        } else {
+            Piece p = charToPiece(c);
+            if (p == Piece::None || file > 7) return false;
+            setBit(b.bitboardFor(p), rank * 8 + file);
+            ++file;
+        }
+    }
+    if (rank != 0 || file != 8) return false;
+    if (__builtin_popcountll(b.bitboardFor(Piece::WhiteKing)) != 1 ||
+        __builtin_popcountll(b.bitboardFor(Piece::BlackKing)) != 1) return false;
+
+    if (side != "w" && side != "b") return false;
+    const bool white = side == "w";
+
+    if (rights != "-") {
+        for (char c : rights) {
+            switch (c) {
+                case 'K': b.castling |= WhiteKingSide; break;
+                case 'Q': b.castling |= WhiteQueenSide; break;
+                case 'k': b.castling |= BlackKingSide; break;
+                case 'q': b.castling |= BlackQueenSide; break;
+                default: return false;
+            }
+        }
+    }
+
+    b.syncFromBitboards();
+
+    if (ep != "-") {
+        if (ep.size() != 2 || ep[0] < 'a' || ep[0] > 'h' || ep[1] != (white ? '6' : '3')) return false;
+        const int sq = (ep[1] - '1') * 8 + (ep[0] - 'a');
+        // Some FENs list the square after every double step; only keep it if the pushed pawn is really there
+        const int pawnSq = white ? sq - 8 : sq + 8;
+        if (b.mailbox[sq] == Piece::None && b.mailbox[pawnSq] == makePiece(PieceType::Pawn, !white)) {
+            b.epSq = sq;
+        }
+    }
+
+    *this = b;
+    whiteToMove = white;
+    return true;
 }
 
 Piece Board::pieceAt(int square) const {

@@ -3,6 +3,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <string>
 
 using Bitboard = uint64_t;
 
@@ -31,6 +32,14 @@ constexpr bool isWhite(Piece p) {
 // For printing: 'P', 'n', ... and '.' for an empty square
 constexpr char pieceToChar(Piece p) {
     return "PNBRQKpnbrqk."[static_cast<int>(p)];
+}
+
+// Inverse of pieceToChar; Piece::None for anything that isn't a piece letter
+constexpr Piece charToPiece(char c) {
+    for (int i = 0; i < 12; ++i) {
+        if ("PNBRQKpnbrqk"[i] == c) return static_cast<Piece>(i);
+    }
+    return Piece::None;
 }
 
 enum class MoveFlag : uint8_t { Normal, DoublePush, EnPassant, Castle };
@@ -100,6 +109,8 @@ public:
 
     void printBoard() const;
     void initPieces();
+    // Returns false and leaves the board unchanged if the FEN is malformed
+    bool loadFen(const std::string &fen, bool &whiteToMove);
     Piece pieceAt(int square) const;
 
     bool isSquareAttacked(int sq, bool byWhite) const;

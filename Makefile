@@ -17,10 +17,16 @@ SFML_LINK    = -lsfml-graphics -lsfml-window -lsfml-system
 gui: $(COMMON_SRC) $(SRCDIR)/main.cpp | $(BINDIR)
 	$(CXX) $(CXXFLAGS) $(SFML_INCLUDE) $(COMMON_SRC) $(SRCDIR)/main.cpp $(SFML_LIB) $(SFML_LINK) -o $(BINDIR)/chessgui
 
+# Perft: checks move generation against published node counts, then runs it.
+# Pass options through PERFT_ARGS, e.g. make perft PERFT_ARGS=--deep
+perft: $(SRCDIR)/Board.cpp $(SRCDIR)/Board.h $(SRCDIR)/Perft.cpp | $(BINDIR)
+	$(CXX) $(CXXFLAGS) $(SRCDIR)/Board.cpp $(SRCDIR)/Perft.cpp -o $(BINDIR)/perft
+	./$(BINDIR)/perft $(PERFT_ARGS)
+
 $(BINDIR):
 	mkdir -p $(BINDIR)
 
 clean:
-	rm -f $(BINDIR)/chess $(BINDIR)/chessgui
+	rm -f $(BINDIR)/chess $(BINDIR)/chessgui $(BINDIR)/perft
 
-.PHONY: terminal gui clean
+.PHONY: terminal gui perft clean
