@@ -1,7 +1,9 @@
 #include "Game.h"
 #include "evaluate.h"
 #include <SFML/Graphics.hpp>
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <future>
@@ -22,6 +24,13 @@ constexpr float BOARD_Y = 70.f;
 constexpr float BAR_TOP = BOARD_Y + BOARD_SIZE;
 constexpr float BAR_HEIGHT = WIN_H - BAR_TOP;
 constexpr float BAR_BTN_Y = BAR_TOP + (BAR_HEIGHT - 44.f) / 2.f;
+constexpr float TOP_BTN_Y = (BOARD_Y - 44.f) / 2.f;
+// Eval bar in the left margin, captured pieces in the right one
+constexpr float EVAL_BAR_W = 22.f;
+constexpr float EVAL_BAR_X = BOARD_X - EVAL_BAR_W - 14.f;
+constexpr float CAPTURED_SIZE = TILE * 0.42f;
+constexpr float CAPTURED_X = BOARD_X + BOARD_SIZE + 10.f;
+constexpr int CAPTURED_COLS = 3;
 
 const sf::Color BG(38, 37, 34);
 const sf::Color LIGHT_SQ(240, 217, 181);
@@ -34,6 +43,9 @@ const sf::Color BTN_COLOR(70, 70, 78);
 const sf::Color BTN_HOVER(98, 98, 110);
 const sf::Color TEXT_COLOR(235, 235, 235);
 const sf::Color MUTED_TEXT(150, 150, 150);
+const sf::Color BTN_DISABLED(52, 52, 56);
+const sf::Color EVAL_WHITE(235, 235, 235);
+const sf::Color EVAL_BLACK(20, 20, 20);
 
 const PieceType PROMO_CHOICES[4] = {PieceType::Queen, PieceType::Rook, PieceType::Bishop, PieceType::Knight};
 
@@ -44,8 +56,20 @@ struct Button {
     std::string label;
 };
 
+// One position of the game, kept so Undo and Redo can show it again
+struct Snapshot {
+    Board board;
+    int lastFrom = -1, lastTo = -1;
+    std::vector<Piece> captured;  // every piece taken so far
+};
+
 struct GuiState {
     Game game;
+    // Every position so far, the start included; view is the one on screen, the last one when live
+    std::vector<Snapshot> history;
+    size_t view = 0;
+    // White's share of the eval bar, eased towards the real value each frame
+    float evalBarWhite = 0.5f;
     Screen screen = Screen::Menu;
     // In 1 player mode the engine plays Black
     bool vsEngine = false;
@@ -55,7 +79,6 @@ struct GuiState {
     int engineJobGame = -1;
     int selected = -1;
     std::vector<Move> selectedMoves;
-    int lastFrom = -1, lastTo = -1;
     int promoFrom = -1, promoTo = -1;
     GameOverStatus status = GameOverStatus::Playing;
 };
@@ -67,12 +90,22 @@ const Button twoPlayerBtn{sf::FloatRect({(WIN_W - 240.f) / 2.f, 440.f}, {240.f, 
 const Button quitBtn{sf::FloatRect({(WIN_W - 240.f) / 2.f, 540.f}, {240.f, 60.f}), "Quit"};
 const Button menuBtn{sf::FloatRect({BOARD_X + BOARD_SIZE - 105.f, BAR_BTN_Y}, {105.f, 44.f}), "Menu"};
 const Button resetBtn{sf::FloatRect({BOARD_X + BOARD_SIZE - 224.f, BAR_BTN_Y}, {105.f, 44.f}), "Reset"};
+const Button undoBtn{sf::FloatRect({BOARD_X + BOARD_SIZE - 224.f, TOP_BTN_Y}, {105.f, 44.f}), "< Undo"};
+const Button redoBtn{sf::FloatRect({BOARD_X + BOARD_SIZE - 105.f, TOP_BTN_Y}, {105.f, 44.f}), "Redo >"};
 const Button playAgainBtn{sf::FloatRect({(WIN_W - 150.f) / 2.f, BANNER_Y + 90.f}, {150.f, 44.f}), "Play Again"};
 
 bool isGameOver(GameOverStatus s) {
     return s == GameOverStatus::Checkmate || s == GameOverStatus::Stalemate ||
            s == GameOverStatus::InsufficientMaterial || s == GameOverStatus::FiftyMoveRule ||
            s == GameOverStatus::ThreefoldRepetition;
+}
+
+bool isLive(const GuiState &s) {
+    return s.view + 1 == s.history.size();
+}
+
+const Snapshot &shown(const GuiState &s) {
+    return s.history[s.view];
 }
 
 bool isEngineTurn(const GuiState &s) {
@@ -159,24 +192,24 @@ void drawText(sf::RenderTarget &target, const sf::Font &font, const std::string 
 }
 
 void drawButton(sf::RenderTarget &target, const sf::Font &font, const Button &btn,
-                sf::Vector2f mouse, unsigned textSize = 22) {
+                sf::Vector2f mouse, unsigned textSize = 22, bool enabled = true) {
     sf::RectangleShape rect(btn.rect.size);
     rect.setPosition(btn.rect.position);
-    rect.setFillColor(btn.rect.contains(mouse) ? BTN_HOVER : BTN_COLOR);
+    rect.setFillColor(!enabled ? BTN_DISABLED : btn.rect.contains(mouse) ? BTN_HOVER : BTN_COLOR);
     rect.setOutlineThickness(2.f);
     rect.setOutlineColor(sf::Color(120, 120, 130));
     target.draw(rect);
     drawText(target, font, btn.label, textSize,
-             btn.rect.position + btn.rect.size / 2.f, TEXT_COLOR, true);
+             btn.rect.position + btn.rect.size / 2.f, enabled ? TEXT_COLOR : MUTED_TEXT, true);
 }
 
 void drawPiece(sf::RenderTarget &target, const std::map<Piece, sf::Texture> &textures,
-               Piece piece, sf::Vector2f pos) {
+               Piece piece, sf::Vector2f pos, float tileSize = TILE) {
     auto it = textures.find(piece);
     if (it == textures.end()) return;
     sf::Sprite sprite(it->second);
     sf::Vector2u size = it->second.getSize();
-    sprite.setScale({TILE / size.x, TILE / size.y});
+    sprite.setScale({tileSize / size.x, tileSize / size.y});
     sprite.setPosition(pos);
     target.draw(sprite);
 }
@@ -191,6 +224,9 @@ void fillSquare(sf::RenderTarget &target, int sq, sf::Color color) {
 std::string statusMessage(const GuiState &s) {
     const char *mover = s.game.isWhiteTurn() ? "White" : "Black";
     const char *other = s.game.isWhiteTurn() ? "Black" : "White";
+    if (!isLive(s)) {
+        return "Viewing move " + std::to_string(s.view) + " of " + std::to_string(s.history.size() - 1);
+    }
     if (!isGameOver(s.status) && isEngineTurn(s)) return "Engine is thinking...";
     switch (s.status) {
         case GameOverStatus::Checkmate: return std::string("Checkmate! ") + other + " wins.";
@@ -206,7 +242,7 @@ std::string statusMessage(const GuiState &s) {
 
 // Shown from White's point of view in pawns, e.g. "+3.20", as most chess GUIs do
 std::string evalMessage(const GuiState &s) {
-    const Board &board = s.game.getBoard();
+    const Board &board = shown(s).board;
     int score = evaluate(board);
     if (!board.isWhiteTurn()) score = -score;
     char buf[32];
@@ -214,12 +250,26 @@ std::string evalMessage(const GuiState &s) {
     return buf;
 }
 
+// White's share of the eval bar, from 0 to 1. Uses Lichess's centipawns to winning chances curve,
+// so a pawn up moves the bar a little and a queen up nearly fills it
+float evalBarTarget(const Board &board) {
+    if (board.legalMoves().empty()) {
+        if (!board.inCheck()) return 0.5f;
+        return board.isWhiteTurn() ? 0.f : 1.f;
+    }
+    int score = evaluate(board);
+    if (!board.isWhiteTurn()) score = -score;
+    return 1.f / (1.f + std::exp(-0.00368208f * score));
+}
+
 void resetGame(GuiState &s) {
     ++s.gameId;
     s.game.init();
+    s.history.assign(1, Snapshot{s.game.getBoard(), -1, -1, {}});
+    s.view = 0;
+    s.evalBarWhite = 0.5f;
     s.selected = -1;
     s.selectedMoves.clear();
-    s.lastFrom = s.lastTo = -1;
     s.promoFrom = s.promoTo = -1;
     s.status = GameOverStatus::Playing;
 }
@@ -230,10 +280,19 @@ void clearSelection(GuiState &s) {
 }
 
 void attemptMove(GuiState &s, int from, int to, PieceType promo) {
+    Piece captured = Piece::None;
+    for (const Move &m : s.game.legalMoves()) {
+        if (m.from() == from && m.to() == to) captured = m.captured();
+    }
+
     std::string error;
     if (s.game.tryMove(from, to, promo, error)) {
-        s.lastFrom = from;
-        s.lastTo = to;
+        // Stay on an older position if the player is looking at one when the engine moves
+        bool wasLive = isLive(s);
+        Snapshot next{s.game.getBoard(), from, to, s.history.back().captured};
+        if (captured != Piece::None) next.captured.push_back(captured);
+        s.history.push_back(std::move(next));
+        if (wasLive) s.view = s.history.size() - 1;
         s.status = s.game.checkGameOver();
     } else {
         std::cerr << error << std::endl;
@@ -273,6 +332,14 @@ void handleBoardClick(GuiState &s, int sq) {
     }
 }
 
+// Steps the view one move back or forward; the game itself doesn't change
+void stepView(GuiState &s, int delta) {
+    if (delta < 0 && s.view > 0) --s.view;
+    if (delta > 0 && !isLive(s)) ++s.view;
+    clearSelection(s);
+    s.promoFrom = s.promoTo = -1;
+}
+
 void handleClick(GuiState &s, sf::RenderWindow &window, sf::Vector2f p) {
     if (s.screen == Screen::Menu) {
         if (onePlayerBtn.rect.contains(p)) {
@@ -310,6 +377,16 @@ void handleClick(GuiState &s, sf::RenderWindow &window, sf::Vector2f p) {
         s.screen = Screen::Menu;
         return;
     }
+    if (undoBtn.rect.contains(p)) {
+        stepView(s, -1);
+        return;
+    }
+    if (redoBtn.rect.contains(p)) {
+        stepView(s, +1);
+        return;
+    }
+    // An older position is only for looking at
+    if (!isLive(s)) return;
 
     if (isGameOver(s.status)) {
         if (playAgainBtn.rect.contains(p)) resetGame(s);
@@ -352,21 +429,22 @@ void drawMenu(sf::RenderTarget &target, const sf::Font &font, sf::Vector2f mouse
 
 void drawBoard(sf::RenderTarget &target, const sf::Font &font,
                const std::map<Piece, sf::Texture> &textures, const GuiState &s) {
-    const Board &board = s.game.getBoard();
+    const Snapshot &snap = shown(s);
+    const Board &board = snap.board;
 
     for (int sq = 0; sq < 64; ++sq) {
         bool light = ((sq & 7) + (sq >> 3)) % 2 == 1;
         fillSquare(target, sq, light ? LIGHT_SQ : DARK_SQ);
     }
 
-    if (s.lastFrom != -1) {
-        fillSquare(target, s.lastFrom, LAST_MOVE_COLOR);
-        fillSquare(target, s.lastTo, LAST_MOVE_COLOR);
+    if (snap.lastFrom != -1) {
+        fillSquare(target, snap.lastFrom, LAST_MOVE_COLOR);
+        fillSquare(target, snap.lastTo, LAST_MOVE_COLOR);
     }
     if (s.selected != -1) fillSquare(target, s.selected, SELECT_COLOR);
 
-    if (board.inCheck(s.game.isWhiteTurn())) {
-        Piece king = makePiece(PieceType::King, s.game.isWhiteTurn());
+    if (board.inCheck()) {
+        Piece king = makePiece(PieceType::King, board.isWhiteTurn());
         for (int sq = 0; sq < 64; ++sq) {
             if (board.pieceAt(sq) == king) fillSquare(target, sq, CHECK_COLOR);
         }
@@ -438,6 +516,53 @@ void drawEval(sf::RenderTarget &target, const sf::Font &font, const GuiState &s)
     drawText(target, font, evalMessage(s), 22, {BOARD_X, BOARD_Y / 2.f - 14.f}, TEXT_COLOR);
 }
 
+// Fills from the bottom with White's share, so it leans towards whoever is winning
+void drawEvalBar(sf::RenderTarget &target, GuiState &s) {
+    s.evalBarWhite += (evalBarTarget(shown(s).board) - s.evalBarWhite) * 0.15f;
+
+    sf::RectangleShape black({EVAL_BAR_W, BOARD_SIZE});
+    black.setPosition({EVAL_BAR_X, BOARD_Y});
+    black.setFillColor(EVAL_BLACK);
+    black.setOutlineThickness(2.f);
+    black.setOutlineColor(sf::Color(120, 120, 130));
+    target.draw(black);
+
+    float whiteHeight = BOARD_SIZE * s.evalBarWhite;
+    sf::RectangleShape white({EVAL_BAR_W, whiteHeight});
+    white.setPosition({EVAL_BAR_X, BOARD_Y + BOARD_SIZE - whiteHeight});
+    white.setFillColor(EVAL_WHITE);
+    target.draw(white);
+
+    sf::RectangleShape middle({EVAL_BAR_W, 2.f});
+    middle.setPosition({EVAL_BAR_X, BOARD_Y + BOARD_SIZE / 2.f - 1.f});
+    middle.setFillColor(sf::Color(200, 60, 60));
+    target.draw(middle);
+}
+
+// Captured pieces sit beside the side that took them: White's captures at the bottom, Black's at the top
+void drawCaptured(sf::RenderTarget &target, const std::map<Piece, sf::Texture> &textures, const GuiState &s) {
+    std::vector<Piece> byWhite, byBlack;
+    for (Piece p : shown(s).captured) (isWhite(p) ? byBlack : byWhite).push_back(p);
+    // Most valuable first; PieceType runs pawn to queen
+    auto mostValuable = [](Piece a, Piece b) { return pieceType(a) > pieceType(b); };
+
+    for (bool white : {true, false}) {
+        std::vector<Piece> &pieces = white ? byWhite : byBlack;
+        std::stable_sort(pieces.begin(), pieces.end(), mostValuable);
+        for (size_t i = 0; i < pieces.size(); ++i) {
+            float x = CAPTURED_X + (i % CAPTURED_COLS) * CAPTURED_SIZE;
+            float row = static_cast<float>(i / CAPTURED_COLS);
+            float y = white ? BOARD_Y + BOARD_SIZE - (row + 1) * CAPTURED_SIZE : BOARD_Y + row * CAPTURED_SIZE;
+            drawPiece(target, textures, pieces[i], {x, y}, CAPTURED_SIZE);
+        }
+    }
+}
+
+void drawTopBar(sf::RenderTarget &target, const sf::Font &font, const GuiState &s, sf::Vector2f mouse) {
+    drawButton(target, font, undoBtn, mouse, 20, s.view > 0);
+    drawButton(target, font, redoBtn, mouse, 20, !isLive(s));
+}
+
 void drawBottomBar(sf::RenderTarget &target, const sf::Font &font,
                    const GuiState &s, sf::Vector2f mouse) {
     drawText(target, font, statusMessage(s), 22,
@@ -477,6 +602,10 @@ int main() {
                 if (state.screen != Screen::Playing) continue;
                 if (key->code == sf::Keyboard::Key::R) {
                     resetGame(state);
+                } else if (key->code == sf::Keyboard::Key::Left) {
+                    stepView(state, -1);
+                } else if (key->code == sf::Keyboard::Key::Right) {
+                    stepView(state, +1);
                 } else if (key->code == sf::Keyboard::Key::Escape) {
                     state.promoFrom = state.promoTo = -1;
                     clearSelection(state);
@@ -493,8 +622,11 @@ int main() {
         } else {
             drawBoard(window, font, textures, state);
             if (state.promoFrom != -1) drawPromotionPicker(window, textures, state, mouse);
-            if (isGameOver(state.status)) drawGameOverBanner(window, font, state, mouse);
+            if (isGameOver(state.status) && isLive(state)) drawGameOverBanner(window, font, state, mouse);
             drawEval(window, font, state);
+            drawEvalBar(window, state);
+            drawCaptured(window, textures, state);
+            drawTopBar(window, font, state, mouse);
             drawBottomBar(window, font, state, mouse);
         }
         window.display();
