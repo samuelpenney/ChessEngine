@@ -14,8 +14,8 @@ SFML_INCLUDE = -I/opt/homebrew/opt/sfml/include
 SFML_LIB     = -L/opt/homebrew/opt/sfml/lib -Wl,-rpath,/opt/homebrew/opt/sfml/lib
 SFML_LINK    = -lsfml-graphics -lsfml-window -lsfml-system
 
-gui: $(COMMON_SRC) $(SRCDIR)/main.cpp | $(BINDIR)
-	$(CXX) $(CXXFLAGS) $(SFML_INCLUDE) $(COMMON_SRC) $(SRCDIR)/main.cpp $(SFML_LIB) $(SFML_LINK) -o $(BINDIR)/chessgui
+gui: $(COMMON_SRC) $(SRCDIR)/evaluate.cpp $(SRCDIR)/main.cpp | $(BINDIR)
+	$(CXX) $(CXXFLAGS) $(SFML_INCLUDE) $(COMMON_SRC) $(SRCDIR)/evaluate.cpp $(SRCDIR)/main.cpp $(SFML_LIB) $(SFML_LINK) -o $(BINDIR)/chessgui
 
 # Perft: checks move generation against published node counts, then runs it.
 # Pass options through PERFT_ARGS, e.g. make perft PERFT_ARGS=--deep

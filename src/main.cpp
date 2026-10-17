@@ -1,5 +1,7 @@
 #include "Game.h"
+#include "evaluate.h"
 #include <SFML/Graphics.hpp>
+#include <cstdio>
 #include <filesystem>
 #include <iostream>
 #include <map>
@@ -177,6 +179,16 @@ std::string statusMessage(const GuiState &s) {
         case GameOverStatus::Playing: break;
     }
     return std::string(mover) + " to move";
+}
+
+// Shown from White's point of view in pawns, e.g. "+3.20", as most chess GUIs do
+std::string evalMessage(const GuiState &s) {
+    const Board &board = s.game.getBoard();
+    int score = evaluate(board);
+    if (!board.isWhiteTurn()) score = -score;
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "Eval: %+.2f", score / 100.0);
+    return buf;
 }
 
 void resetGame(GuiState &s) {
@@ -375,6 +387,10 @@ void drawGameOverBanner(sf::RenderTarget &target, const sf::Font &font,
     drawButton(target, font, playAgainBtn, mouse, 20);
 }
 
+void drawEval(sf::RenderTarget &target, const sf::Font &font, const GuiState &s) {
+    drawText(target, font, evalMessage(s), 22, {BOARD_X, BOARD_Y / 2.f - 14.f}, TEXT_COLOR);
+}
+
 void drawBottomBar(sf::RenderTarget &target, const sf::Font &font,
                    const GuiState &s, sf::Vector2f mouse) {
     drawText(target, font, statusMessage(s), 22,
@@ -430,6 +446,7 @@ int main() {
             drawBoard(window, font, textures, state);
             if (state.promoFrom != -1) drawPromotionPicker(window, textures, state, mouse);
             if (isGameOver(state.status)) drawGameOverBanner(window, font, state, mouse);
+            drawEval(window, font, state);
             drawBottomBar(window, font, state, mouse);
         }
         window.display();

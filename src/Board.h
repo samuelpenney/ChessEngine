@@ -110,6 +110,7 @@ class Board {
 
 public:
     Board();
+    Bitboard pieces(Piece p) const { return pieceBB[static_cast<int>(p)]; }
 
     static bool getBit(Bitboard bb, int square);
     static void setBit(Bitboard &bb, int square);

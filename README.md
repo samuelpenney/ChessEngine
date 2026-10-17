@@ -18,7 +18,7 @@
 
 ### Phase 1: A minimal working engine
 
-1. Material-only evaluation (P=100, N=320, B=330, R=500, Q=900), scored from the side to move's point of view
+~~1. Material-only evaluation (P=100, N=320, B=330, R=500, Q=900), scored from the side to move's point of view~~
 
 2. Negamax with alpha-beta at a fixed depth. Checkmate scores `-MATE + ply`, stalemate and repetition score 0
 
