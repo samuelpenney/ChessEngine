@@ -1,4 +1,4 @@
-#define MAIN_CPP
+#include "Game.h"
 #include <iostream>
 #include <SFML/Graphics.hpp>
 /*
@@ -18,4 +18,3 @@ int main() {
     }
 }
 */
-
