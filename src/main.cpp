@@ -1,6 +1,5 @@
 #include "Game.h"
 #include "evaluate.h"
-#include "search.h"
 #include <SFML/Graphics.hpp>
 #include <chrono>
 #include <cstdio>
@@ -45,18 +44,13 @@ struct Button {
     std::string label;
 };
 
-struct EngineResult {
-    Move move;
-    double secs;
-};
-
 struct GuiState {
     Game game;
     Screen screen = Screen::Menu;
     // In 1 player mode the engine plays Black
     bool vsEngine = false;
     // The engine searches on another thread; a reset bumps gameId so a stale result gets dropped
-    std::future<EngineResult> engineJob;
+    std::future<SearchResult> engineJob;
     int gameId = 0;
     int engineJobGame = -1;
     int selected = -1;
@@ -331,22 +325,18 @@ void handleClick(GuiState &s, sf::RenderWindow &window, sf::Vector2f p) {
 void updateEngine(GuiState &s) {
     if (s.engineJob.valid()) {
         if (s.engineJob.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
-        EngineResult result = s.engineJob.get();
+        SearchResult result = s.engineJob.get();
         if (s.engineJobGame != s.gameId) return;
-        std::printf("Engine plays %s (depth %d, %.3fs)\n", moveText(result.move).c_str(), ENGINE_DEPTH,
-                    result.secs);
+        std::printf("Engine plays %s (depth %d, %ld nodes, %.3fs)\n", moveText(result.move).c_str(),
+                    result.depth, result.nodes, result.secs);
         attemptMove(s, result.move.from(), result.move.to(), result.move.promo());
         return;
     }
     if (s.screen != Screen::Playing || isGameOver(s.status) || !isEngineTurn(s)) return;
 
     s.engineJobGame = s.gameId;
-    s.engineJob = std::async(std::launch::async, [snapshot = s.game] {
-        auto start = std::chrono::steady_clock::now();
-        Move m = snapshot.engineMove(ENGINE_DEPTH);
-        double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-        return EngineResult{m, secs};
-    });
+    s.engineJob = std::async(std::launch::async,
+                             [snapshot = s.game] { return snapshot.engineMove(ENGINE_SECONDS); });
 }
 
 void drawMenu(sf::RenderTarget &target, const sf::Font &font, sf::Vector2f mouse) {

@@ -1,5 +1,7 @@
 # Chess Engine
 
+### Current Estimated ELO: 1386
+
 ## Things to do before engine
 
 ~~1. Implement game logic~~

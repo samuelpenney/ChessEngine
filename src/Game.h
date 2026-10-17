@@ -2,6 +2,7 @@
 #define GAME_H
 
 #include "Board.h"
+#include "search.h"
 #include <string>
 
 enum class GameOverStatus {
@@ -26,7 +27,7 @@ public:
     GameOverStatus checkGameOver() const;
     bool tryMove(int fromSq, int toSq, PieceType promo, std::string &errorMsg);
     // Searches a copy of the board, so it's safe to call from another thread while this Game isn't changing
-    Move engineMove(int depth) const;
+    SearchResult engineMove(double seconds) const;
     static int coordToSquare(const std::string &coord);
 };
 

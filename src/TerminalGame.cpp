@@ -1,6 +1,4 @@
 #include "Game.h"
-#include "search.h"
-#include <chrono>
 #include <iomanip>
 #include <iostream>
 #include <string>
@@ -77,14 +75,12 @@ static bool askPlayerColor(bool &playerWhite) {
 
 static void playEngineMove(Game &game) {
     std::cout << "Engine is thinking..." << std::endl;
-    auto start = std::chrono::steady_clock::now();
-    Move m = game.engineMove(ENGINE_DEPTH);
-    double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+    SearchResult r = game.engineMove(ENGINE_SECONDS);
 
     std::string errorMsg;
-    game.tryMove(m.from(), m.to(), m.promo(), errorMsg);
-    std::cout << "Engine plays " << formatMove(m) << " (depth " << ENGINE_DEPTH << ", "
-              << std::fixed << std::setprecision(3) << secs << "s)" << std::endl;
+    game.tryMove(r.move.from(), r.move.to(), r.move.promo(), errorMsg);
+    std::cout << "Engine plays " << formatMove(r.move) << " (depth " << r.depth << ", " << r.nodes
+              << " nodes, " << std::fixed << std::setprecision(3) << r.secs << "s)" << std::endl;
 }
 
 int main() {

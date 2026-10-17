@@ -23,20 +23,20 @@ perft: $(SRCDIR)/Board.cpp $(SRCDIR)/Board.h $(SRCDIR)/Perft.cpp | $(BINDIR)
 	$(CXX) $(CXXFLAGS) $(SRCDIR)/Board.cpp $(SRCDIR)/Perft.cpp -o $(BINDIR)/perft
 	./$(BINDIR)/perft $(PERFT_ARGS)
 
-# Tests for evaluation and search, with runtimes and a search benchmark.
-# Pass options through TEST_ARGS, e.g. make test TEST_ARGS=--no-bench
 TESTDIR  = tests
-TEST_SRC = $(SRCDIR)/Board.cpp $(SRCDIR)/evaluate.cpp $(SRCDIR)/search.cpp \
-           $(TESTDIR)/EvaluateTests.cpp $(TESTDIR)/SearchTests.cpp $(TESTDIR)/TestMain.cpp
 
-test: $(TEST_SRC) $(TESTDIR)/test.h | $(BINDIR)
-	$(CXX) $(CXXFLAGS) -I$(SRCDIR) $(TEST_SRC) -o $(BINDIR)/tests
-	./$(BINDIR)/tests $(TEST_ARGS)
+# Engine vs Stockfish at fixed Elo levels, then a rating estimate (needs: brew install stockfish).
+# Pass options through MATCH_ARGS, e.g. make match MATCH_ARGS="--tc 10+0.1 1320 1500"
+MATCH_SRC = $(SRCDIR)/Board.cpp $(SRCDIR)/evaluate.cpp $(SRCDIR)/search.cpp $(TESTDIR)/Match.cpp
+
+match: $(MATCH_SRC) $(TESTDIR)/test.h | $(BINDIR)
+	$(CXX) $(CXXFLAGS) -I$(SRCDIR) $(MATCH_SRC) -o $(BINDIR)/match
+	./$(BINDIR)/match $(MATCH_ARGS)
 
 $(BINDIR):
 	mkdir -p $(BINDIR)
 
 clean:
-	rm -f $(BINDIR)/chess $(BINDIR)/chessgui $(BINDIR)/perft $(BINDIR)/tests
+	rm -f $(BINDIR)/chess $(BINDIR)/chessgui $(BINDIR)/perft $(BINDIR)/match
 
-.PHONY: terminal gui perft test clean
+.PHONY: terminal gui perft match clean

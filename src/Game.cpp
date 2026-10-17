@@ -1,5 +1,4 @@
 #include "Game.h"
-#include "search.h"
 
 void Game::init() {
     board.initPieces();
@@ -74,9 +73,9 @@ bool Game::tryMove(int fromSq, int toSq, PieceType promo, std::string &errorMsg)
     return false;
 }
 
-Move Game::engineMove(int depth) const {
+SearchResult Game::engineMove(double seconds) const {
     Board copy = board;
-    return findBestMove(copy, depth);
+    return searchForTime(copy, seconds);
 }
 
 int Game::coordToSquare(const std::string &coord) {
