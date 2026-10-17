@@ -248,18 +248,115 @@ class Board {
                                     pieceCharAt(base + 6) == '.' &&
                                     !isSquareAttacked(base + 5, !white) &&
                                     !isSquareAttacked(base + 6, !white)) {
-                                        moves.emplace_back(sq, base + 6);
-                                    }
+
+                                    moves.emplace_back(sq, base + 6);
+                                }
+                                if (canQ && pieceCharAt(base + 0) == rook &&
+                                    pieceCharAt(base + 1) == '.' &&
+                                    pieceCharAt(base + 2) == '.' &&
+                                    pieceCharAt(base + 3) == '.' &&
+                                    !isSquareAttacked(base + 3, !white) &&
+                                    !isSquareAttacked(base + 2, !white)) {
+
+                                        moves.emplace_back(sq, base + 2);
+                                }
                             }
+                            break;
                         }
                     }
                 }
             }
+            return moves;
+        }
+
+        std::vector<Move> legalMoves(bool white) const {
+            std::vector<Move> legal;
+            for (const Move &m : pseudoLegalMoves(white)) {
+                Board copy = *this;
+                copy.makeMove(m);
+                if (!copy.inCheck(white)) legal.push_back(m);
+            }
+            return legal;
+        }
+
+        bool isCheckmate(bool white) const {
+            return inCheck(white) && legalMoves(white).empty();
+        }
+
+        bool isStalemate(bool white) const {
+            return !inCheck(white) && legalMoves(white).empty();
+        }
+
+        bool insufficientMaterial() const {
+            if (whitePawns || blackPawns || whiteRooks || blackRooks || whiteQueens || blackQueens) return false;
+            return popCount(whiteKnights | whiteBishops | blackKnights | blackBishops ) <= 1;
         }
     
         static bool isWhitePiece(char c) {
             return c >= 'A' && c <= 'Z';
         }
+
+        void makeMove(const Move &m) {
+            char piece = pieceCharAt(m.from);
+            if (piece == '.') return;
+            bool white = isWhitePiece(piece);
+            char type = static_cast<char>(std::toupper(piece));
+            char target = pieceCharAt(m.to);
+            int fromFile = m.from & 7, toFile = m.to & 7;
+
+            // en passant
+            if (type == 'P' && fromFile != toFile && target == '.') {
+                int capturedSq = white ? m.to - 8 : m.to + 8;
+                clearSquare(capturedSq);
+            }
+
+            // King moves two files, brining the rook across
+            if (type == 'K' && std::abs(toFile - fromFile) == 2) {
+                if (toFile > fromFile) {
+                    movePiece(m.from + 3, m.from + 1);
+                } else {
+                    movePiece(m.from - 4, m.from - 1);
+                }
+            }
+            movePiece(m.from, m.to);
+
+            //promo
+            if (type == 'P' && ((m.to >> 3) == 7 || (m.to >> 3) == 0)) {
+                char promo = m.promo ? static_cast<char>(std::toupper(m.promo)) : 'Q';
+                clearSquare(m.to);
+                setBit(bitboardFor(white ? promo : static_cast<char>(std::tolower(promo))), m.to);
+            }
+
+            // move a king/rook, or taking a rook on its home square
+            if (m.from == 4 || m.to == 4) {
+                whiteCastleK = whiteCastleQ = false;
+            }
+            if (m.from == 60 || m.to == 60) { 
+                blackCastleK = blackCastleQ = false; 
+            }
+            if (m.from == 0  || m.to == 0)  {
+                whiteCastleQ = false;
+            }
+            if (m.from == 7  || m.to == 7) {
+                whiteCastleK = false;
+            }
+            if (m.from == 56 || m.to == 56) {
+                blackCastleQ = false;
+            }
+            if (m.from == 63 || m.to == 63) {
+                blackCastleK = false;
+            }
+
+            //en passant target is only available for one move after the double step btw
+            epSq = -1;
+            if (type == 'P' && std::abs(m.to - m.from) == 16) {
+                epSq = (m.from + m.to) / 2;
+            }
+
+        }
+
+
+
     private:
 
         void slide(std::vector<Move> &moves, int sq, bool white, bool diag, bool straight) const {
@@ -287,6 +384,14 @@ class Board {
 
         static bool inBounds(int f, int r) {
             return f >= 0 && f < 8 && r >= 0 && r < 8;
+        }
+
+        static int popCount(Bitboard bb) {
+            int n = 0;
+            while(bb) {
+                bb &= bb - 1; ++n;
+            }
+            return n;
         }
 
         int kingSquare(bool white) const {
