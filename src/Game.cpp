@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "search.h"
 
 void Game::init() {
     board.initPieces();
@@ -71,6 +72,11 @@ bool Game::tryMove(int fromSq, int toSq, PieceType promo, std::string &errorMsg)
         errorMsg = "Illegal move: that piece can't move there (blocked, wrong movement, or it would leave your king in check).";
     }
     return false;
+}
+
+Move Game::engineMove(int depth) const {
+    Board copy = board;
+    return findBestMove(copy, depth);
 }
 
 int Game::coordToSquare(const std::string &coord) {

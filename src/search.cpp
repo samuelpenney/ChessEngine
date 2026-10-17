@@ -1,10 +1,5 @@
-#define SEARCH_CPP
-#include "Game.h"
-#include "Board.h"
+#include "search.h"
 #include "evaluate.h"
-
-constexpr int MATE = 100000;
-constexpr int INF = 1000000;
 
 int negamax(Board &board, int depth, int ply, int alpha, int beta ) {
     

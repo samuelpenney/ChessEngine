@@ -20,9 +20,9 @@
 
 ~~1. Material-only evaluation (P=100, N=320, B=330, R=500, Q=900), scored from the side to move's point of view~~
 
-2. Negamax with alpha-beta at a fixed depth. Checkmate scores `-MATE + ply`, stalemate and repetition score 0
+~~2. Negamax with alpha-beta at a fixed depth. Checkmate scores `-MATE + ply`, stalemate and repetition score 0~~
 
-3. Let the engine play a side in the terminal game and the GUI, and display the evaluation in the GUI
+~~3. Let the engine play a side in the terminal game and the GUI, and display the evaluation in the GUI~~
 
 ### Phase 2: Make the search see clearly
 

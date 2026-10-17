@@ -25,6 +25,8 @@ public:
     const MoveList &legalMoves() const;
     GameOverStatus checkGameOver() const;
     bool tryMove(int fromSq, int toSq, PieceType promo, std::string &errorMsg);
+    // Searches a copy of the board, so it's safe to call from another thread while this Game isn't changing
+    Move engineMove(int depth) const;
     static int coordToSquare(const std::string &coord);
 };
 
