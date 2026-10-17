@@ -207,31 +207,31 @@ std::vector<Move> Board::pseudoLegalMoves(bool white) const {
                         if (df == 0 && dr == 0) continue;
                         addStep(moves, sq, f + df, r + dr, white);
                     }
-                    int base = white ? 0 : 56;
-                    char rook = white ? 'R' : 'r';
-                    bool canK = white ? whiteCastleK : blackCastleK;
-                    bool canQ = white ? whiteCastleQ : blackCastleQ;
-                    if (sq == base + 4 && !isSquareAttacked(sq, !white)) {
-                        if (canK && pieceCharAt(base + 7) == rook &&
-                            pieceCharAt(base + 5) == '.' &&
-                            pieceCharAt(base + 6) == '.' &&
-                            !isSquareAttacked(base + 5, !white) &&
-                            !isSquareAttacked(base + 6, !white)) {
-
-                            moves.emplace_back(sq, base + 6);
-                        }
-                        if (canQ && pieceCharAt(base + 0) == rook &&
-                            pieceCharAt(base + 1) == '.' &&
-                            pieceCharAt(base + 2) == '.' &&
-                            pieceCharAt(base + 3) == '.' &&
-                            !isSquareAttacked(base + 3, !white) &&
-                            !isSquareAttacked(base + 2, !white)) {
-
-                                moves.emplace_back(sq, base + 2);
-                        }
-                    }
-                    break;
                 }
+                int base = white ? 0 : 56;
+                char rook = white ? 'R' : 'r';
+                bool canK = white ? whiteCastleK : blackCastleK;
+                bool canQ = white ? whiteCastleQ : blackCastleQ;
+                if (sq == base + 4 && !isSquareAttacked(sq, !white)) {
+                    if (canK && pieceCharAt(base + 7) == rook &&
+                        pieceCharAt(base + 5) == '.' &&
+                        pieceCharAt(base + 6) == '.' &&
+                        !isSquareAttacked(base + 5, !white) &&
+                        !isSquareAttacked(base + 6, !white)) {
+
+                        moves.emplace_back(sq, base + 6);
+                    }
+                    if (canQ && pieceCharAt(base + 0) == rook &&
+                        pieceCharAt(base + 1) == '.' &&
+                        pieceCharAt(base + 2) == '.' &&
+                        pieceCharAt(base + 3) == '.' &&
+                        !isSquareAttacked(base + 3, !white) &&
+                        !isSquareAttacked(base + 2, !white)) {
+
+                        moves.emplace_back(sq, base + 2);
+                    }
+                }
+                break;
             }
         }
     }
