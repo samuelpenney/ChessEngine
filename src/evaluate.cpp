@@ -1,6 +1,5 @@
 #include "evaluate.h"
 
-
 constexpr int PIECE_VALUE[6] = {100, 320, 330, 500, 900, 0};
 
 int evaluate(const Board &board) {
