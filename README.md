@@ -1,6 +1,6 @@
 # Chess Engine
 
-### Current Estimated ELO: 1386
+### Current Estimated ELO: 1521
 
 ## Things to do before engine
 
@@ -28,11 +28,11 @@
 
 ### Phase 2: Make the search see clearly
 
-1. Quiescence search: keep searching captures at depth 0 until the position is quiet
+~~1. Quiescence search: keep searching captures at depth 0 until the position is quiet~~
 
-2. Move ordering: captures by MVV-LVA first, then quiet moves
+~~2. Move ordering: captures by MVV-LVA first, then quiet moves~~
 
-3. Iterative deepening with a time limit
+~~3. Iterative deepening with a time limit~~
 
 ### Phase 3: Better evaluation
 

@@ -1,5 +1,6 @@
 #include "search.h"
 #include "evaluate.h"
+#include "ordering.h"
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -25,16 +26,34 @@ double secondsSince(Clock::time_point start) {
     return std::chrono::duration<double>(Clock::now() - start).count();
 }
 
-bool sameMove(Move a, Move b) {
-    return a.from() == b.from() && a.to() == b.to() && a.promo() == b.promo();
+int quiesce(Board &board, const MoveList &moves, int ply, int alpha, int beta) {
+    const bool check = board.inCheck();
+    if (check) {
+
+        if (moves.empty()) return -MATE + ply;
+    } else {
+
+        int standPat = evaluate(board);
+        if (standPat >= beta) return beta;
+        if (standPat > alpha) alpha = standPat;
+    }
+
+    for (const Move &m : check ? orderMoves(moves) : captures(moves)) {
+        Undo u = board.makeMove(m);
+        int score = timeUp() ? 0 : -quiesce(board, board.legalMoves(), ply + 1, -beta, -alpha);
+        board.unmakeMove(m, u);
+        if (stopped) return 0;
+
+        if (score >= beta) return beta;
+        if (score > alpha) alpha = score;
+    }
+    return alpha;
 }
 
 // Searches every root move to depth, trying first before the others. Returns false if the
 // time ran out part way, in which case best and bestScore are left alone
 bool searchRoot(Board &board, const MoveList &moves, int depth, Move first, Move &best, int &bestScore) {
-    MoveList ordered;
-    for (const Move &m : moves) if (sameMove(m, first)) ordered.push(m);
-    for (const Move &m : moves) if (!sameMove(m, first)) ordered.push(m);
+    MoveList ordered = orderMoves(moves, first);
 
     Move bestSoFar = ordered[0];
     int alpha = -INF;
@@ -64,9 +83,10 @@ int negamax(Board &board, int depth, int ply, int alpha, int beta ) {
     MoveList moves = board.legalMoves();
     if (moves.empty()) return board.inCheck() ? -MATE + ply : 0;
 
-    if (depth == 0) return evaluate(board);
+    
+    if (depth == 0) return quiesce(board, moves, ply, alpha, beta);
 
-    for (const Move &m : moves) {
+    for (const Move &m : orderMoves(moves)) {
         Undo u = board.makeMove(m);
         int score = -negamax(board, depth - 1, ply + 1, -beta, -alpha);
         board.unmakeMove(m, u);

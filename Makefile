@@ -3,7 +3,7 @@ CXXFLAGS = -std=c++17 -O2 -Wall -Wextra -g
 SRCDIR   = src
 BINDIR   = bin
 
-COMMON_SRC = $(SRCDIR)/Board.cpp $(SRCDIR)/Game.cpp $(SRCDIR)/evaluate.cpp $(SRCDIR)/search.cpp
+COMMON_SRC = $(SRCDIR)/Board.cpp $(SRCDIR)/Game.cpp $(SRCDIR)/evaluate.cpp $(SRCDIR)/search.cpp $(SRCDIR)/ordering.cpp
 
 # Terminal target
 terminal: $(COMMON_SRC) $(SRCDIR)/TerminalGame.cpp | $(BINDIR)
@@ -27,7 +27,7 @@ TESTDIR  = tests
 
 # Engine vs Stockfish at fixed Elo levels, then a rating estimate (needs: brew install stockfish).
 # Pass options through MATCH_ARGS, e.g. make match MATCH_ARGS="--tc 10+0.1 1320 1500"
-MATCH_SRC = $(SRCDIR)/Board.cpp $(SRCDIR)/evaluate.cpp $(SRCDIR)/search.cpp $(TESTDIR)/Match.cpp
+MATCH_SRC = $(SRCDIR)/Board.cpp $(SRCDIR)/evaluate.cpp $(SRCDIR)/search.cpp $(SRCDIR)/ordering.cpp $(TESTDIR)/Match.cpp
 
 match: $(MATCH_SRC) $(TESTDIR)/test.h | $(BINDIR)
 	$(CXX) $(CXXFLAGS) -I$(SRCDIR) $(MATCH_SRC) -o $(BINDIR)/match
