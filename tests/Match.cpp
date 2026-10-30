@@ -117,7 +117,7 @@ struct Job {
 };
 
 struct GameResult {
-    double score = 0;  // for our engine: 1 win, 0.5 draw, 0 loss
+    double score = 0;  // for the engine: 1 win, 0.5 draw, 0 loss
     std::string reason;
     int plies = 0;
     Board finalBoard;
